@@ -1,0 +1,15 @@
+package com.wificaptive.audit.entity;
+
+public enum AuditAction {
+    ADMIN_LOGIN,
+    ADMIN_LOGOUT,
+    SESSION_CREATE,
+    SESSION_REVOKE,
+    SESSION_EXPIRE,
+    LOCATION_CREATE,
+    LOCATION_UPDATE,
+    LOCATION_DELETE,
+    GATEWAY_TOGGLE,
+    DEVICE_BLOCK,
+    SYSTEM_BOOTSTRAP
+}
