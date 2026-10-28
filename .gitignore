@@ -36,4 +36,9 @@ target/
 *.log
 .DS_Store
 Thumbs.db
-.env
+
+### AI Agent & Skills ###
+.agents/
+.agent/
+skills/
+
