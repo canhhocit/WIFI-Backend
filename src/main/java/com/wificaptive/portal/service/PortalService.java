@@ -44,18 +44,30 @@ public class PortalService {
     private final DeviceService deviceService;
     private final GatewayAdapter gatewayAdapter;
     private final AuditService auditService;
+    private final com.wificaptive.campaigns.service.CampaignService campaignService;
+    private final com.wificaptive.surveys.service.SurveyService surveyService;
+    private final com.wificaptive.verification.service.OtpVerificationService otpVerificationService;
+    private final com.wificaptive.portal.template.service.PortalTemplateService portalTemplateService;
 
     public PortalService(
             WifiLocationRepository locationRepository,
             GuestSessionRepository sessionRepository,
             DeviceService deviceService,
             GatewayAdapter gatewayAdapter,
-            AuditService auditService) {
+            AuditService auditService,
+            com.wificaptive.campaigns.service.CampaignService campaignService,
+            com.wificaptive.surveys.service.SurveyService surveyService,
+            com.wificaptive.verification.service.OtpVerificationService otpVerificationService,
+            com.wificaptive.portal.template.service.PortalTemplateService portalTemplateService) {
         this.locationRepository = locationRepository;
         this.sessionRepository = sessionRepository;
         this.deviceService = deviceService;
         this.gatewayAdapter = gatewayAdapter;
         this.auditService = auditService;
+        this.campaignService = campaignService;
+        this.surveyService = surveyService;
+        this.otpVerificationService = otpVerificationService;
+        this.portalTemplateService = portalTemplateService;
     }
 
     @Transactional(readOnly = true)
@@ -81,13 +93,39 @@ public class PortalService {
                 ? "Simulated Gateway Mode: Network authorization is simulated for MVP testing. Physical firewall access has not been modified."
                 : "Live Gateway Connected.";
 
-        return new PortalInitResponse(
+        PortalInitResponse response = new PortalInitResponse(
                 LocationDto.from(location),
                 clientIp,
                 clientMacHint,
                 isMock,
                 notice
         );
+
+        // Link active policy/media campaign
+        if (campaignService != null) {
+            com.wificaptive.campaigns.entity.Campaign activeCampaign = campaignService.getActiveCampaignForLocation(
+                    location.getId(),
+                    location.getAdminUnitId()
+            );
+            if (activeCampaign != null) {
+                response.setActiveCampaign(com.wificaptive.campaigns.dto.CampaignDto.from(activeCampaign));
+                if (surveyService != null) {
+                    response.setActiveSurvey(surveyService.getActiveSurveyForCampaign(activeCampaign.getId()));
+                }
+            }
+        }
+
+        // Link template
+        if (portalTemplateService != null) {
+            response.setPortalTemplate(portalTemplateService.getDefaultOrActive());
+        }
+
+        // Check if MAC is remembered (can bypass OTP)
+        boolean isRemembered = otpVerificationService != null && otpVerificationService.isMacRemembered(clientMacHint);
+        response.setMacRemembered(isRemembered);
+        response.setOtpRequired(!isRemembered);
+
+        return response;
     }
 
     @Transactional

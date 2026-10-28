@@ -168,6 +168,7 @@ public class WifiLocation extends BaseEntity {
 
     public com.wificaptive.geography.entity.AdministrativeUnit getAdminUnit() { return adminUnit; }
     public void setAdminUnit(com.wificaptive.geography.entity.AdministrativeUnit adminUnit) { this.adminUnit = adminUnit; }
+    public Long getAdminUnitId() { return adminUnit != null ? adminUnit.getId() : null; }
 
     public String getLocationCode() { return locationCode; }
     public void setLocationCode(String locationCode) { this.locationCode = locationCode; }

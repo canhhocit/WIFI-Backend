@@ -1,6 +1,9 @@
 package com.wificaptive.portal.dto;
 
+import com.wificaptive.campaigns.dto.CampaignDto;
 import com.wificaptive.locations.dto.LocationDto;
+import com.wificaptive.portal.template.dto.PortalTemplateDto;
+import com.wificaptive.surveys.dto.SurveyDto;
 
 public class PortalInitResponse {
     private LocationDto location;
@@ -8,6 +11,11 @@ public class PortalInitResponse {
     private String clientMacHint;
     private boolean mockGateway;
     private String gatewayNotice;
+    private CampaignDto activeCampaign;
+    private SurveyDto activeSurvey;
+    private PortalTemplateDto portalTemplate;
+    private boolean macRemembered;
+    private boolean otpRequired;
 
     public PortalInitResponse() {
     }
@@ -20,43 +28,33 @@ public class PortalInitResponse {
         this.gatewayNotice = gatewayNotice;
     }
 
-    public LocationDto getLocation() {
-        return location;
-    }
+    public LocationDto getLocation() { return location; }
+    public void setLocation(LocationDto location) { this.location = location; }
 
-    public void setLocation(LocationDto location) {
-        this.location = location;
-    }
+    public String getClientIp() { return clientIp; }
+    public void setClientIp(String clientIp) { this.clientIp = clientIp; }
 
-    public String getClientIp() {
-        return clientIp;
-    }
+    public String getClientMacHint() { return clientMacHint; }
+    public void setClientMacHint(String clientMacHint) { this.clientMacHint = clientMacHint; }
 
-    public void setClientIp(String clientIp) {
-        this.clientIp = clientIp;
-    }
+    public boolean isMockGateway() { return mockGateway; }
+    public void setMockGateway(boolean mockGateway) { this.mockGateway = mockGateway; }
 
-    public String getClientMacHint() {
-        return clientMacHint;
-    }
+    public String getGatewayNotice() { return gatewayNotice; }
+    public void setGatewayNotice(String gatewayNotice) { this.gatewayNotice = gatewayNotice; }
 
-    public void setClientMacHint(String clientMacHint) {
-        this.clientMacHint = clientMacHint;
-    }
+    public CampaignDto getActiveCampaign() { return activeCampaign; }
+    public void setActiveCampaign(CampaignDto activeCampaign) { this.activeCampaign = activeCampaign; }
 
-    public boolean isMockGateway() {
-        return mockGateway;
-    }
+    public SurveyDto getActiveSurvey() { return activeSurvey; }
+    public void setActiveSurvey(SurveyDto activeSurvey) { this.activeSurvey = activeSurvey; }
 
-    public void setMockGateway(boolean mockGateway) {
-        this.mockGateway = mockGateway;
-    }
+    public PortalTemplateDto getPortalTemplate() { return portalTemplate; }
+    public void setPortalTemplate(PortalTemplateDto portalTemplate) { this.portalTemplate = portalTemplate; }
 
-    public String getGatewayNotice() {
-        return gatewayNotice;
-    }
+    public boolean isMacRemembered() { return macRemembered; }
+    public void setMacRemembered(boolean macRemembered) { this.macRemembered = macRemembered; }
 
-    public void setGatewayNotice(String gatewayNotice) {
-        this.gatewayNotice = gatewayNotice;
-    }
+    public boolean isOtpRequired() { return otpRequired; }
+    public void setOtpRequired(boolean otpRequired) { this.otpRequired = otpRequired; }
 }

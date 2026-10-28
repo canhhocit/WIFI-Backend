@@ -20,7 +20,8 @@ public interface WifiLocationRepository extends JpaRepository<WifiLocation, Long
     boolean existsByLocationCode(String locationCode);
     List<WifiLocation> findByActiveTrue();
     Page<WifiLocation> findByNameContainingIgnoreCase(String name, Pageable pageable);
-    List<WifiLocation> findByAdminUnitId(Long adminUnitId);
+    @Query("SELECT l FROM WifiLocation l WHERE l.adminUnit.id = :adminUnitId")
+    List<WifiLocation> findByAdminUnitId(@Param("adminUnitId") Long adminUnitId);
 
     @Modifying
     @Query("UPDATE WifiLocation l SET l.adminUnit.id = :targetId WHERE l.adminUnit.id = :sourceId")

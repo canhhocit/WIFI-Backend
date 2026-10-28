@@ -48,6 +48,18 @@ class PortalServiceTest {
     @Mock
     private AuditService auditService;
 
+    @Mock
+    private com.wificaptive.campaigns.service.CampaignService campaignService;
+
+    @Mock
+    private com.wificaptive.surveys.service.SurveyService surveyService;
+
+    @Mock
+    private com.wificaptive.verification.service.OtpVerificationService otpVerificationService;
+
+    @Mock
+    private com.wificaptive.portal.template.service.PortalTemplateService portalTemplateService;
+
     private PortalService portalService;
 
     @BeforeEach
@@ -57,7 +69,11 @@ class PortalServiceTest {
                 sessionRepository,
                 deviceService,
                 gatewayAdapter,
-                auditService
+                auditService,
+                campaignService,
+                surveyService,
+                otpVerificationService,
+                portalTemplateService
         );
     }
 

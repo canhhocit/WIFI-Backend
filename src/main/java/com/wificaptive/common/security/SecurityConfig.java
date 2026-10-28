@@ -46,7 +46,7 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         // Public Portal Endpoints (Guests)
-                        .requestMatchers("/api/portal/**").permitAll()
+                        .requestMatchers("/api/portal/**", "/api/v1/portal/**").permitAll()
                         // Public Auth Endpoint
                         .requestMatchers("/api/auth/login").permitAll()
                         // Actuator Health & Diagnostics
@@ -56,7 +56,7 @@ public class SecurityConfig {
                         // Pre-flight CORS OPTIONS requests
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         // Admin Protected Endpoints
-                        .requestMatchers("/api/admin/**", "/api/auth/me").authenticated()
+                        .requestMatchers("/api/admin/**", "/api/v1/admin/**", "/api/auth/me").authenticated()
                         .anyRequest().authenticated()
                 );
 
