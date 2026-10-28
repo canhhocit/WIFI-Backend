@@ -5,6 +5,8 @@ import com.wificaptive.audit.service.AuditService;
 import com.wificaptive.common.dto.PageResponse;
 import com.wificaptive.common.exception.BadRequestException;
 import com.wificaptive.common.exception.ResourceNotFoundException;
+import com.wificaptive.geography.entity.AdministrativeUnit;
+import com.wificaptive.geography.repository.AdministrativeUnitRepository;
 import com.wificaptive.locations.dto.CreateLocationRequest;
 import com.wificaptive.locations.dto.LocationDto;
 import com.wificaptive.locations.dto.UpdateLocationRequest;
@@ -22,10 +24,14 @@ import java.util.List;
 public class LocationService {
 
     private final WifiLocationRepository locationRepository;
+    private final AdministrativeUnitRepository adminUnitRepository;
     private final AuditService auditService;
 
-    public LocationService(WifiLocationRepository locationRepository, AuditService auditService) {
+    public LocationService(WifiLocationRepository locationRepository,
+                           AdministrativeUnitRepository adminUnitRepository,
+                           AuditService auditService) {
         this.locationRepository = locationRepository;
+        this.adminUnitRepository = adminUnitRepository;
         this.auditService = auditService;
     }
 
@@ -89,6 +95,23 @@ public class LocationService {
         location.setPromoBannerUrl(request.getPromoBannerUrl());
         location.setPromoActionUrl(request.getPromoActionUrl());
 
+        if (request.getAdminUnitId() != null) {
+            AdministrativeUnit unit = adminUnitRepository.findById(request.getAdminUnitId())
+                    .orElseThrow(() -> new BadRequestException("Không tìm thấy đơn vị địa bàn: " + request.getAdminUnitId()));
+            location.setAdminUnit(unit);
+        }
+        location.setLocationCode(request.getLocationCode() != null ? request.getLocationCode() : request.getSlug().toUpperCase());
+        if (request.getLatitude() != null && request.getLongitude() != null) {
+            validateGeoFence(request.getLatitude(), request.getLongitude());
+            location.setLatitude(request.getLatitude());
+            location.setLongitude(request.getLongitude());
+        }
+        location.setStatus(request.getStatus() != null ? request.getStatus() : "ACTIVE");
+        location.setIspName(request.getIspName());
+        location.setCircuitCode(request.getCircuitCode());
+        location.setContactName(request.getContactName());
+        location.setContactPhone(request.getContactPhone());
+
         WifiLocation saved = locationRepository.save(location);
 
         auditService.recordEvent(
@@ -120,6 +143,23 @@ public class LocationService {
         if (request.getPromoBannerUrl() != null) location.setPromoBannerUrl(request.getPromoBannerUrl());
         if (request.getPromoActionUrl() != null) location.setPromoActionUrl(request.getPromoActionUrl());
         if (request.getActive() != null) location.setActive(request.getActive());
+        if (request.getAdminUnitId() != null) {
+            AdministrativeUnit unit = adminUnitRepository.findById(request.getAdminUnitId())
+                    .orElseThrow(() -> new BadRequestException("Không tìm thấy đơn vị địa bàn: " + request.getAdminUnitId()));
+            location.setAdminUnit(unit);
+        }
+        if (request.getLocationCode() != null) location.setLocationCode(request.getLocationCode());
+        if (request.getLatitude() != null && request.getLongitude() != null) {
+            validateGeoFence(request.getLatitude(), request.getLongitude());
+            location.setLatitude(request.getLatitude());
+            location.setLongitude(request.getLongitude());
+        }
+        if (request.getStatus() != null) location.setStatus(request.getStatus());
+        if (request.getStatusReason() != null) location.setStatusReason(request.getStatusReason());
+        if (request.getIspName() != null) location.setIspName(request.getIspName());
+        if (request.getCircuitCode() != null) location.setCircuitCode(request.getCircuitCode());
+        if (request.getContactName() != null) location.setContactName(request.getContactName());
+        if (request.getContactPhone() != null) location.setContactPhone(request.getContactPhone());
 
         WifiLocation updated = locationRepository.save(location);
 
@@ -150,5 +190,12 @@ public class LocationService {
                 id.toString(),
                 "Deleted Wi-Fi location: " + location.getName()
         );
+    }
+
+    private void validateGeoFence(Double lat, Double lng) {
+        // Hải Phòng bounding box approx: 20.50N to 21.15N, 106.40E to 107.15E
+        if (lat < 20.50 || lat > 21.15 || lng < 106.40 || lng > 107.15) {
+            throw new BadRequestException("Tọa độ (" + lat + ", " + lng + ") nằm ngoài phạm vi ranh giới thành phố Hải Phòng (Vĩ độ: 20.50-21.15, Kinh độ: 106.40-107.15)");
+        }
     }
 }

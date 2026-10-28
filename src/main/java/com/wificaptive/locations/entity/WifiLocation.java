@@ -43,6 +43,37 @@ public class WifiLocation extends BaseEntity {
     @Column(name = "promo_action_url", length = 500)
     private String promoActionUrl;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "admin_unit_id")
+    private com.wificaptive.geography.entity.AdministrativeUnit adminUnit;
+
+    @Column(name = "location_code", length = 50)
+    private String locationCode;
+
+    @Column(name = "latitude")
+    private Double latitude;
+
+    @Column(name = "longitude")
+    private Double longitude;
+
+    @Column(name = "status", length = 20)
+    private String status = "ACTIVE";
+
+    @Column(name = "status_reason", length = 255)
+    private String statusReason;
+
+    @Column(name = "isp_name", length = 50)
+    private String ispName;
+
+    @Column(name = "circuit_code", length = 100)
+    private String circuitCode;
+
+    @Column(name = "contact_name", length = 100)
+    private String contactName;
+
+    @Column(name = "contact_phone", length = 20)
+    private String contactPhone;
+
     @Column(name = "is_active", nullable = false)
     private boolean active = true;
 
@@ -134,6 +165,36 @@ public class WifiLocation extends BaseEntity {
     public void setActive(boolean active) {
         this.active = active;
     }
+
+    public com.wificaptive.geography.entity.AdministrativeUnit getAdminUnit() { return adminUnit; }
+    public void setAdminUnit(com.wificaptive.geography.entity.AdministrativeUnit adminUnit) { this.adminUnit = adminUnit; }
+
+    public String getLocationCode() { return locationCode; }
+    public void setLocationCode(String locationCode) { this.locationCode = locationCode; }
+
+    public Double getLatitude() { return latitude; }
+    public void setLatitude(Double latitude) { this.latitude = latitude; }
+
+    public Double getLongitude() { return longitude; }
+    public void setLongitude(Double longitude) { this.longitude = longitude; }
+
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
+
+    public String getStatusReason() { return statusReason; }
+    public void setStatusReason(String statusReason) { this.statusReason = statusReason; }
+
+    public String getIspName() { return ispName; }
+    public void setIspName(String ispName) { this.ispName = ispName; }
+
+    public String getCircuitCode() { return circuitCode; }
+    public void setCircuitCode(String circuitCode) { this.circuitCode = circuitCode; }
+
+    public String getContactName() { return contactName; }
+    public void setContactName(String contactName) { this.contactName = contactName; }
+
+    public String getContactPhone() { return contactPhone; }
+    public void setContactPhone(String contactPhone) { this.contactPhone = contactPhone; }
 
     public String getPromoTitle() {
         return promoTitle;

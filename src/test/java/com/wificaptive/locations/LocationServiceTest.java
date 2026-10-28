@@ -27,13 +27,16 @@ class LocationServiceTest {
     private WifiLocationRepository locationRepository;
 
     @Mock
+    private com.wificaptive.geography.repository.AdministrativeUnitRepository adminUnitRepository;
+
+    @Mock
     private AuditService auditService;
 
     private LocationService locationService;
 
     @BeforeEach
     void setUp() {
-        locationService = new LocationService(locationRepository, auditService);
+        locationService = new LocationService(locationRepository, adminUnitRepository, auditService);
     }
 
     @Test

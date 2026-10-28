@@ -31,6 +31,17 @@ public class UpdateLocationRequest {
     private String promoBannerUrl;
     private String promoActionUrl;
 
+    private Long adminUnitId;
+    private String locationCode;
+    private Double latitude;
+    private Double longitude;
+    private String status;
+    private String statusReason;
+    private String ispName;
+    private String circuitCode;
+    private String contactName;
+    private String contactPhone;
+
     private Boolean active;
 
     public UpdateLocationRequest() {
@@ -99,6 +110,36 @@ public class UpdateLocationRequest {
     public void setActive(Boolean active) {
         this.active = active;
     }
+
+    public Long getAdminUnitId() { return adminUnitId; }
+    public void setAdminUnitId(Long adminUnitId) { this.adminUnitId = adminUnitId; }
+
+    public String getLocationCode() { return locationCode; }
+    public void setLocationCode(String locationCode) { this.locationCode = locationCode; }
+
+    public Double getLatitude() { return latitude; }
+    public void setLatitude(Double latitude) { this.latitude = latitude; }
+
+    public Double getLongitude() { return longitude; }
+    public void setLongitude(Double longitude) { this.longitude = longitude; }
+
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
+
+    public String getStatusReason() { return statusReason; }
+    public void setStatusReason(String statusReason) { this.statusReason = statusReason; }
+
+    public String getIspName() { return ispName; }
+    public void setIspName(String ispName) { this.ispName = ispName; }
+
+    public String getCircuitCode() { return circuitCode; }
+    public void setCircuitCode(String circuitCode) { this.circuitCode = circuitCode; }
+
+    public String getContactName() { return contactName; }
+    public void setContactName(String contactName) { this.contactName = contactName; }
+
+    public String getContactPhone() { return contactPhone; }
+    public void setContactPhone(String contactPhone) { this.contactPhone = contactPhone; }
 
     public String getPromoTitle() {
         return promoTitle;
