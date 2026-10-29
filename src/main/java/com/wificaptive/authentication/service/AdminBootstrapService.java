@@ -47,20 +47,44 @@ public class AdminBootstrapService implements CommandLineRunner {
             return;
         }
 
-        if (!adminUserRepository.existsByUsername(bootstrapUsername)) {
-            log.info("Administrative account '{}' not detected. Bootstrapping default administrator for local development.", bootstrapUsername);
-            AdminUser admin = new AdminUser(
-                    bootstrapUsername,
-                    passwordEncoder.encode(bootstrapPassword),
-                    bootstrapEmail,
-                    bootstrapFullName,
-                    AdminRole.ROLE_SUPER_ADMIN,
+        // 1. Super Admin (admin / admin123)
+        bootstrapOrUpdateAccount(bootstrapUsername, bootstrapPassword, bootstrapEmail, bootstrapFullName, AdminRole.ROLE_SUPER_ADMIN, null, null);
+
+        // 2. Sở TT&TT Hải Phòng (sotttt_admin / password123)
+        bootstrapOrUpdateAccount("sotttt_admin", "password123", "sotttt@haiphong.gov.vn", "Cán bộ Sở TT&TT Hải Phòng", AdminRole.ROLE_SOTTTT_ADMIN, "0901234567", null);
+
+        // 3. UBND Quận Hồng Bàng (hongbang_officer / password123)
+        bootstrapOrUpdateAccount("hongbang_officer", "password123", "canbo.hongbang@haiphong.gov.vn", "Cán bộ UBND Quận Hồng Bàng", AdminRole.ROLE_DISTRICT_OFFICER, "0912345678", 1L);
+
+        // 4. Kỹ sư Viễn thông VNPT (vnpt_tech01 / password123)
+        bootstrapOrUpdateAccount("vnpt_tech01", "password123", "kythuat.vnpt01@vnpt.vn", "Kỹ thuật viên Viễn thông VNPT", AdminRole.ROLE_VNPT_ENGINEER, "0987654321", null);
+    }
+
+    private void bootstrapOrUpdateAccount(String username, String rawPassword, String email, String fullName, AdminRole role, String phone, Long adminUnitId) {
+        AdminUser user = adminUserRepository.findByUsername(username).orElse(null);
+        if (user == null) {
+            user = new AdminUser(
+                    username,
+                    passwordEncoder.encode(rawPassword),
+                    email,
+                    fullName,
+                    role,
                     true
             );
-            adminUserRepository.save(admin);
-            log.info("Initial development administrator successfully created: username='{}', email='{}'", bootstrapUsername, bootstrapEmail);
+            if (phone != null) user.setPhoneNumber(phone);
+            if (adminUnitId != null) user.setAdminUnitId(adminUnitId);
+            adminUserRepository.save(user);
+            log.info("Initial government administrator created: username='{}', role='{}'", username, role);
         } else {
-            log.debug("Administrative account '{}' exists. Skipping bootstrap.", bootstrapUsername);
+            // Check if password hash is valid or needs to be synchronized with raw password
+            if (!passwordEncoder.matches(rawPassword, user.getPasswordHash())) {
+                user.setPasswordHash(passwordEncoder.encode(rawPassword));
+                user.setFailedLoginAttempts(0);
+                user.setLockedUntil(null);
+                user.setEnabled(true);
+                adminUserRepository.save(user);
+                log.info("Synchronized and activated password hash for government account: username='{}'", username);
+            }
         }
     }
 }
