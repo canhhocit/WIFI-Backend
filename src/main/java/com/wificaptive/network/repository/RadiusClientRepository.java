@@ -14,3 +14,4 @@ public interface RadiusClientRepository extends JpaRepository<RadiusClient, Long
 
     List<RadiusClient> findByEnabledTrue();
 }
+

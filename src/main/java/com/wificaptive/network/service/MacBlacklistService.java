@@ -75,3 +75,4 @@ public class MacBlacklistService {
         return MacBlacklistDto.fromEntity(blacklistRepository.save(entry));
     }
 }
+

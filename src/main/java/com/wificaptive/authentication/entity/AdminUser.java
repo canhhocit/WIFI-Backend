@@ -2,6 +2,7 @@ package com.wificaptive.authentication.entity;
 
 import com.wificaptive.common.entity.BaseEntity;
 import jakarta.persistence.*;
+import java.time.Instant;
 
 @Entity
 @Table(name = "admin_users")
@@ -26,6 +27,18 @@ public class AdminUser extends BaseEntity {
     @Column(name = "enabled", nullable = false)
     private boolean enabled = true;
 
+    @Column(name = "admin_unit_id")
+    private Long adminUnitId;
+
+    @Column(name = "phone_number", length = 20)
+    private String phoneNumber;
+
+    @Column(name = "failed_login_attempts", nullable = false)
+    private int failedLoginAttempts = 0;
+
+    @Column(name = "locked_until")
+    private Instant lockedUntil;
+
     public AdminUser() {
     }
 
@@ -36,6 +49,10 @@ public class AdminUser extends BaseEntity {
         this.fullName = fullName;
         this.role = role;
         this.enabled = enabled;
+    }
+
+    public boolean isAccountNonLocked() {
+        return lockedUntil == null || Instant.now().isAfter(lockedUntil);
     }
 
     public String getUsername() {
@@ -84,5 +101,37 @@ public class AdminUser extends BaseEntity {
 
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
+    }
+
+    public Long getAdminUnitId() {
+        return adminUnitId;
+    }
+
+    public void setAdminUnitId(Long adminUnitId) {
+        this.adminUnitId = adminUnitId;
+    }
+
+    public String getPhoneNumber() {
+        return phoneNumber;
+    }
+
+    public void setPhoneNumber(String phoneNumber) {
+        this.phoneNumber = phoneNumber;
+    }
+
+    public int getFailedLoginAttempts() {
+        return failedLoginAttempts;
+    }
+
+    public void setFailedLoginAttempts(int failedLoginAttempts) {
+        this.failedLoginAttempts = failedLoginAttempts;
+    }
+
+    public Instant getLockedUntil() {
+        return lockedUntil;
+    }
+
+    public void setLockedUntil(Instant lockedUntil) {
+        this.lockedUntil = lockedUntil;
     }
 }

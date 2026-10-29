@@ -18,3 +18,4 @@ public record CreatePolicyRequest(
         Integer priority,
         Boolean active
 ) {}
+

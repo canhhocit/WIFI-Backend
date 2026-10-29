@@ -47,8 +47,8 @@ public class AdminBootstrapService implements CommandLineRunner {
             return;
         }
 
-        if (adminUserRepository.count() == 0) {
-            log.info("No administrative accounts detected. Bootstrapping default initial administrator '{}' for local development.", bootstrapUsername);
+        if (!adminUserRepository.existsByUsername(bootstrapUsername)) {
+            log.info("Administrative account '{}' not detected. Bootstrapping default administrator for local development.", bootstrapUsername);
             AdminUser admin = new AdminUser(
                     bootstrapUsername,
                     passwordEncoder.encode(bootstrapPassword),
@@ -60,7 +60,7 @@ public class AdminBootstrapService implements CommandLineRunner {
             adminUserRepository.save(admin);
             log.info("Initial development administrator successfully created: username='{}', email='{}'", bootstrapUsername, bootstrapEmail);
         } else {
-            log.debug("Administrative accounts exist. Skipping bootstrap.");
+            log.debug("Administrative account '{}' exists. Skipping bootstrap.", bootstrapUsername);
         }
     }
 }

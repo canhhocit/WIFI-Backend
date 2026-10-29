@@ -64,3 +64,4 @@ class AccessLogRetentionServiceTest {
         assertEquals(365, daysBetween);
     }
 }
+

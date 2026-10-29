@@ -11,3 +11,4 @@ public record CreateBlacklistRequest(
         @NotBlank(message = "Lý do chặn không được để trống")
         String reason
 ) {}
+

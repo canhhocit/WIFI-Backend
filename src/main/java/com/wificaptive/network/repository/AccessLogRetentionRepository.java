@@ -33,3 +33,4 @@ public interface AccessLogRetentionRepository extends JpaRepository<AccessLogRet
 
     long countByLocationId(Long locationId);
 }
+

@@ -72,3 +72,4 @@ class MacBlacklistServiceTest {
         assertFalse(unblocked.active());
     }
 }
+

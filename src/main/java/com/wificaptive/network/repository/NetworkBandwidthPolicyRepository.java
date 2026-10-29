@@ -12,3 +12,4 @@ public interface NetworkBandwidthPolicyRepository extends JpaRepository<NetworkB
     List<NetworkBandwidthPolicy> findByActiveTrueOrderByPriorityDesc();
     Optional<NetworkBandwidthPolicy> findByName(String name);
 }
+

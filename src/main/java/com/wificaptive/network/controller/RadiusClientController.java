@@ -41,3 +41,4 @@ public class RadiusClientController {
         return ResponseEntity.ok(ApiResponse.ok(radiusClientService.toggleClient(id)));
     }
 }
+

@@ -11,3 +11,4 @@ public record DistrictStatDto(
         int totalIncidents,
         double slaCompliancePercent
 ) {}
+

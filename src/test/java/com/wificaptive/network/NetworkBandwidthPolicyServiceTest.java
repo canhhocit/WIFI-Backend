@@ -80,3 +80,4 @@ class NetworkBandwidthPolicyServiceTest {
         assertEquals("Standard", active.get(0).name());
     }
 }
+

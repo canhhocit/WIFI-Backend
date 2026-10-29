@@ -12,6 +12,12 @@ public class AdminUserDto {
     private String fullName;
     private AdminRole role;
     private boolean enabled;
+    private Long adminUnitId;
+    private String adminUnitName;
+    private String phoneNumber;
+    private int failedLoginAttempts;
+    private Instant lockedUntil;
+    private boolean locked;
     private Instant createdAt;
 
     public AdminUserDto() {
@@ -25,6 +31,11 @@ public class AdminUserDto {
         dto.setFullName(user.getFullName());
         dto.setRole(user.getRole());
         dto.setEnabled(user.isEnabled());
+        dto.setAdminUnitId(user.getAdminUnitId());
+        dto.setPhoneNumber(user.getPhoneNumber());
+        dto.setFailedLoginAttempts(user.getFailedLoginAttempts());
+        dto.setLockedUntil(user.getLockedUntil());
+        dto.setLocked(user.getLockedUntil() != null && user.getLockedUntil().isAfter(Instant.now()));
         dto.setCreatedAt(user.getCreatedAt());
         return dto;
     }
@@ -75,6 +86,54 @@ public class AdminUserDto {
 
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
+    }
+
+    public Long getAdminUnitId() {
+        return adminUnitId;
+    }
+
+    public void setAdminUnitId(Long adminUnitId) {
+        this.adminUnitId = adminUnitId;
+    }
+
+    public String getAdminUnitName() {
+        return adminUnitName;
+    }
+
+    public void setAdminUnitName(String adminUnitName) {
+        this.adminUnitName = adminUnitName;
+    }
+
+    public String getPhoneNumber() {
+        return phoneNumber;
+    }
+
+    public void setPhoneNumber(String phoneNumber) {
+        this.phoneNumber = phoneNumber;
+    }
+
+    public int getFailedLoginAttempts() {
+        return failedLoginAttempts;
+    }
+
+    public void setFailedLoginAttempts(int failedLoginAttempts) {
+        this.failedLoginAttempts = failedLoginAttempts;
+    }
+
+    public Instant getLockedUntil() {
+        return lockedUntil;
+    }
+
+    public void setLockedUntil(Instant lockedUntil) {
+        this.lockedUntil = lockedUntil;
+    }
+
+    public boolean isLocked() {
+        return locked;
+    }
+
+    public void setLocked(boolean locked) {
+        this.locked = locked;
     }
 
     public Instant getCreatedAt() {

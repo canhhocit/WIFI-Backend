@@ -16,3 +16,4 @@ public record CreateRadiusClientRequest(
         String description,
         Boolean enabled
 ) {}
+

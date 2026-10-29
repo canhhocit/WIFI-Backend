@@ -19,3 +19,4 @@ public record GovernmentReportDto(
         double averageResolutionHours,
         List<DistrictStatDto> districtBreakdown
 ) {}
+

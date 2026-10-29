@@ -17,3 +17,4 @@ public interface MacBlacklistRepository extends JpaRepository<MacBlacklist, Long
 
     Page<MacBlacklist> findByActive(Boolean active, Pageable pageable);
 }
+

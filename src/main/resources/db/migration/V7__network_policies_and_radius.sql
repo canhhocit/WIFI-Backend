@@ -83,3 +83,4 @@ INSERT INTO radius_clients (client_name, ip_address, shared_secret, nas_identifi
 VALUES 
 ('OPNsense Gateway Hải Phòng Trung tâm', '192.168.100.1', 'hp_radius_secret_2026', 'OPNSENSE-CORE-HP', 'Gateway Captive Portal lõi đặt tại Trung tâm tích hợp dữ liệu TP Hải Phòng', TRUE),
 ('Mikrotik Gateway Đảo Cát Hải', '192.168.200.1', 'cat_hai_radius_2026', 'MIKROTIK-CAT-HAI', 'Gateway phân vùng viễn thông huyện đảo Cát Hải', TRUE);
+

@@ -54,3 +54,4 @@ public class MacBlacklistController {
         return ResponseEntity.ok(ApiResponse.ok(blacklistService.unblock(id)));
     }
 }
+

@@ -44,3 +44,4 @@ public class AccessLogRetentionController {
         return ResponseEntity.ok(ApiResponse.ok(PageResponse.from(results)));
     }
 }
+

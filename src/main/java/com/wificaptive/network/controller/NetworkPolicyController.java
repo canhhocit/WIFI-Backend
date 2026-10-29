@@ -41,3 +41,4 @@ public class NetworkPolicyController {
         return ResponseEntity.ok(ApiResponse.ok(policyService.togglePolicy(id)));
     }
 }
+
