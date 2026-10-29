@@ -19,6 +19,7 @@ public interface WifiLocationRepository extends JpaRepository<WifiLocation, Long
     boolean existsBySlug(String slug);
     boolean existsByLocationCode(String locationCode);
     List<WifiLocation> findByActiveTrue();
+    long countByActiveTrue();
     Page<WifiLocation> findByNameContainingIgnoreCase(String name, Pageable pageable);
     @Query("SELECT l FROM WifiLocation l WHERE l.adminUnit.id = :adminUnitId")
     List<WifiLocation> findByAdminUnitId(@Param("adminUnitId") Long adminUnitId);
