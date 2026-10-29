@@ -51,6 +51,8 @@ public interface GuestSessionRepository extends JpaRepository<GuestSession, Long
 
     long countByStatus(SessionStatus status);
 
+    long countByLocationIdAndStatus(Long locationId, SessionStatus status);
+
     @Query("SELECT COUNT(s) FROM GuestSession s WHERE s.status = 'AUTHORIZED' AND s.expiresAt > :now")
     long countActiveSessions(@Param("now") Instant now);
 

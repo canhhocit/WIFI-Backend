@@ -4,6 +4,8 @@ import com.wificaptive.devices.entity.NetworkDevice;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -20,12 +22,14 @@ public interface NetworkDeviceRepository extends JpaRepository<NetworkDevice, Lo
 
     boolean existsBySerialNumber(String serialNumber);
 
-    List<NetworkDevice> findByLocationId(Long locationId);
+    @Query("SELECT d FROM NetworkDevice d WHERE d.location.id = :locationId")
+    List<NetworkDevice> findByLocationId(@Param("locationId") Long locationId);
 
     Page<NetworkDevice> findByStatus(String status, Pageable pageable);
 
     Page<NetworkDevice> findByDeviceType(String deviceType, Pageable pageable);
 
-    Page<NetworkDevice> findByLocationAdminUnitId(Long adminUnitId, Pageable pageable);
+    @Query("SELECT d FROM NetworkDevice d WHERE d.location.adminUnit.id = :adminUnitId")
+    Page<NetworkDevice> findByLocationAdminUnitId(@Param("adminUnitId") Long adminUnitId, Pageable pageable);
 }
 

@@ -73,6 +73,7 @@ public class NetworkDevice {
 
     public WifiLocation getLocation() { return location; }
     public void setLocation(WifiLocation location) { this.location = location; }
+    public Long getLocationId() { return location != null ? location.getId() : null; }
 
     public String getDeviceType() { return deviceType; }
     public void setDeviceType(String deviceType) { this.deviceType = deviceType; }
