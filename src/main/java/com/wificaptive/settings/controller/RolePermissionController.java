@@ -24,13 +24,13 @@ public class RolePermissionController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN')")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<List<RolePermissionDto>>> getAllPermissions() {
         return ResponseEntity.ok(ApiResponse.ok(service.getAllPermissions()));
     }
 
     @GetMapping("/{roleName}")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN')")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<List<RolePermissionDto>>> getPermissionsByRole(@PathVariable String roleName) {
         return ResponseEntity.ok(ApiResponse.ok(service.getPermissionsByRole(roleName)));
     }
