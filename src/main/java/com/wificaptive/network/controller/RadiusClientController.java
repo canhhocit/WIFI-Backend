@@ -13,8 +13,8 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/v1/admin/radius-clients")
-@PreAuthorize("hasRole('ADMIN')")
+@RequestMapping({"/api/v1/admin/radius-clients", "/v1/admin/radius-clients"})
+@PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN')")
 public class RadiusClientController {
 
     private final RadiusClientService radiusClientService;

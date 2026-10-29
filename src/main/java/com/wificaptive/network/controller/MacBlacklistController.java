@@ -16,8 +16,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/v1/admin/blacklist")
-@PreAuthorize("hasRole('ADMIN')")
+@RequestMapping({"/api/v1/admin/blacklist", "/v1/admin/blacklist"})
+@PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN')")
 public class MacBlacklistController {
 
     private final MacBlacklistService blacklistService;

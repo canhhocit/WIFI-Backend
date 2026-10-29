@@ -56,7 +56,7 @@ public class SecurityConfig {
                         // Pre-flight CORS OPTIONS requests
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         // Admin Protected Endpoints
-                        .requestMatchers("/api/admin/**", "/api/v1/admin/**", "/api/auth/me").authenticated()
+                        .requestMatchers("/api/admin/**", "/api/v1/admin/**", "/v1/admin/**", "/api/auth/me").authenticated()
                         .anyRequest().authenticated()
                 );
 

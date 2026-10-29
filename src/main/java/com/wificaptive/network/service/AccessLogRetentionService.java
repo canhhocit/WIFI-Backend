@@ -75,7 +75,9 @@ public class AccessLogRetentionService {
             Pageable pageable
     ) {
         String cleanMac = (clientMac != null && !clientMac.isBlank()) ? clientMac.trim() : null;
-        return retentionRepository.searchLogs(cleanMac, locationId, startDate, endDate, pageable)
+        Instant effectiveStart = startDate != null ? startDate : Instant.ofEpochMilli(0L);
+        Instant effectiveEnd = endDate != null ? endDate : Instant.now().plus(3650, ChronoUnit.DAYS);
+        return retentionRepository.searchLogs(cleanMac, locationId, effectiveStart, effectiveEnd, pageable)
                 .map(AccessLogRetentionDto::fromEntity);
     }
 

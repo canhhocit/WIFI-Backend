@@ -13,8 +13,8 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/v1/admin/network-policies")
-@PreAuthorize("hasRole('ADMIN')")
+@RequestMapping({"/api/v1/admin/network-policies", "/v1/admin/network-policies"})
+@PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN')")
 public class NetworkPolicyController {
 
     private final NetworkBandwidthPolicyService policyService;

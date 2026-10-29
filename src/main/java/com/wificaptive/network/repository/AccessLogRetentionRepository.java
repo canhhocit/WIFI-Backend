@@ -17,10 +17,10 @@ public interface AccessLogRetentionRepository extends JpaRepository<AccessLogRet
     Page<AccessLogRetention> findByClientMacContainingIgnoreCase(String clientMac, Pageable pageable);
 
     @Query("SELECT l FROM AccessLogRetention l WHERE " +
-           "(:clientMac IS NULL OR LOWER(l.clientMac) LIKE LOWER(CONCAT('%', :clientMac, '%'))) AND " +
+           "(:clientMac IS NULL OR LOWER(l.clientMac) LIKE LOWER(CONCAT('%', CAST(:clientMac AS string), '%'))) AND " +
            "(:locationId IS NULL OR l.locationId = :locationId) AND " +
-           "(:startDate IS NULL OR l.authenticatedAt >= :startDate) AND " +
-           "(:endDate IS NULL OR l.authenticatedAt <= :endDate)")
+           "(l.authenticatedAt >= :startDate) AND " +
+           "(l.authenticatedAt <= :endDate)")
     Page<AccessLogRetention> searchLogs(
             @Param("clientMac") String clientMac,
             @Param("locationId") Long locationId,

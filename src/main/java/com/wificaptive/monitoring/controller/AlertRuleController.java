@@ -8,7 +8,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/v1/admin/alerts")
+@RequestMapping({"/api/v1/admin/alerts", "/v1/admin/alerts"})
 public class AlertRuleController {
 
     private final MonitoringService monitoringService;
@@ -17,7 +17,7 @@ public class AlertRuleController {
         this.monitoringService = monitoringService;
     }
 
-    @GetMapping("/rules")
+    @GetMapping({"", "/rules"})
     public ApiResponse<List<AlertRuleDto>> getAlertRules() {
         return ApiResponse.ok(monitoringService.getAllAlertRules());
     }

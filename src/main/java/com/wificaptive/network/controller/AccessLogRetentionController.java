@@ -15,8 +15,8 @@ import org.springframework.web.bind.annotation.*;
 import java.time.Instant;
 
 @RestController
-@RequestMapping("/v1/admin/access-logs")
-@PreAuthorize("hasRole('ADMIN')")
+@RequestMapping({"/api/v1/admin/access-logs", "/v1/admin/access-logs"})
+@PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN')")
 public class AccessLogRetentionController {
 
     private final AccessLogRetentionService retentionService;

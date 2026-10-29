@@ -17,7 +17,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/v1/admin/users")
+@RequestMapping({"/api/v1/admin/users", "/api/admin/users"})
 public class AdminUserController {
 
     private final AdminUserService adminUserService;

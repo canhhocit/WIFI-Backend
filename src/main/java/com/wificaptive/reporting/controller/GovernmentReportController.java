@@ -12,8 +12,8 @@ import org.springframework.web.bind.annotation.*;
 import java.nio.charset.StandardCharsets;
 
 @RestController
-@RequestMapping("/v1/admin/reports/government")
-@PreAuthorize("hasRole('ADMIN')")
+@RequestMapping({"/api/v1/admin/reports/government", "/v1/admin/reports/government"})
+@PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN', 'DISTRICT_OFFICER')")
 public class GovernmentReportController {
 
     private final GovernmentReportService reportService;
