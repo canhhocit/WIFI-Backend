@@ -30,14 +30,17 @@ public class GuestSessionService {
     private final GuestSessionRepository sessionRepository;
     private final GatewayAdapter gatewayAdapter;
     private final AuditService auditService;
+    private final com.wificaptive.network.service.AccessLogRetentionService accessLogRetentionService;
 
     public GuestSessionService(
             GuestSessionRepository sessionRepository,
             GatewayAdapter gatewayAdapter,
-            AuditService auditService) {
+            AuditService auditService,
+            com.wificaptive.network.service.AccessLogRetentionService accessLogRetentionService) {
         this.sessionRepository = sessionRepository;
         this.gatewayAdapter = gatewayAdapter;
         this.auditService = auditService;
+        this.accessLogRetentionService = accessLogRetentionService;
     }
 
     @Transactional(readOnly = true)
@@ -96,6 +99,28 @@ public class GuestSessionService {
 
         GuestSession updated = sessionRepository.save(session);
 
+        if (accessLogRetentionService != null) {
+            Instant start = session.getAuthorizedAt() != null ? session.getAuthorizedAt() : session.getCreatedAt();
+            long duration = start != null
+                    ? Instant.now().getEpochSecond() - start.getEpochSecond()
+                    : 0;
+            accessLogRetentionService.recordSessionCompletion(
+                    session.getId(),
+                    session.getSessionToken(),
+                    session.getMacAddress(),
+                    session.getIpAddress(),
+                    session.getLocation() != null ? session.getLocation().getId() : null,
+                    session.getLocation() != null ? session.getLocation().getName() : null,
+                    session.getGuestContact(),
+                    start,
+                    Instant.now(),
+                    duration,
+                    session.getBytesDownloaded(),
+                    session.getBytesUploaded(),
+                    "ADMIN_REVOKED"
+            );
+        }
+
         auditService.recordEvent(
                 AuditAction.SESSION_REVOKE,
                 actorUsername != null ? actorUsername : "system",
@@ -131,6 +156,29 @@ public class GuestSessionService {
                 );
                 session.setStatus(SessionStatus.EXPIRED);
                 sessionRepository.save(session);
+
+                if (accessLogRetentionService != null) {
+                    Instant start = session.getAuthorizedAt() != null ? session.getAuthorizedAt() : session.getCreatedAt();
+                    long duration = start != null
+                            ? now.getEpochSecond() - start.getEpochSecond()
+                            : 0;
+                    accessLogRetentionService.recordSessionCompletion(
+                            session.getId(),
+                            session.getSessionToken(),
+                            session.getMacAddress(),
+                            session.getIpAddress(),
+                            session.getLocation() != null ? session.getLocation().getId() : null,
+                            session.getLocation() != null ? session.getLocation().getName() : null,
+                            session.getGuestContact(),
+                            start,
+                            now,
+                            duration,
+                            session.getBytesDownloaded(),
+                            session.getBytesUploaded(),
+                            "EXPIRED"
+                    );
+                }
+
                 count++;
             } catch (Exception e) {
                 log.error("Error expiring session {}: {}", session.getId(), e.getMessage());

@@ -36,11 +36,14 @@ class GuestSessionServiceTest {
     @Mock
     private AuditService auditService;
 
+    @Mock
+    private com.wificaptive.network.service.AccessLogRetentionService accessLogRetentionService;
+
     private GuestSessionService sessionService;
 
     @BeforeEach
     void setUp() {
-        sessionService = new GuestSessionService(sessionRepository, gatewayAdapter, auditService);
+        sessionService = new GuestSessionService(sessionRepository, gatewayAdapter, auditService, accessLogRetentionService);
     }
 
     @Test

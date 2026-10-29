@@ -48,6 +48,7 @@ public class PortalService {
     private final com.wificaptive.surveys.service.SurveyService surveyService;
     private final com.wificaptive.verification.service.OtpVerificationService otpVerificationService;
     private final com.wificaptive.portal.template.service.PortalTemplateService portalTemplateService;
+    private final com.wificaptive.network.service.MacBlacklistService macBlacklistService;
 
     public PortalService(
             WifiLocationRepository locationRepository,
@@ -58,7 +59,8 @@ public class PortalService {
             com.wificaptive.campaigns.service.CampaignService campaignService,
             com.wificaptive.surveys.service.SurveyService surveyService,
             com.wificaptive.verification.service.OtpVerificationService otpVerificationService,
-            com.wificaptive.portal.template.service.PortalTemplateService portalTemplateService) {
+            com.wificaptive.portal.template.service.PortalTemplateService portalTemplateService,
+            com.wificaptive.network.service.MacBlacklistService macBlacklistService) {
         this.locationRepository = locationRepository;
         this.sessionRepository = sessionRepository;
         this.deviceService = deviceService;
@@ -68,6 +70,7 @@ public class PortalService {
         this.surveyService = surveyService;
         this.otpVerificationService = otpVerificationService;
         this.portalTemplateService = portalTemplateService;
+        this.macBlacklistService = macBlacklistService;
     }
 
     @Transactional(readOnly = true)
@@ -149,6 +152,11 @@ public class PortalService {
         Device device = deviceService.registerOrUpdateDevice(macAddress, clientIp, userAgent);
         if (device.isBlocked()) {
             throw new BadRequestException("This device (MAC: " + macAddress + ") has been blocked by network administration.");
+        }
+
+        // Check MAC Blacklist
+        if (macBlacklistService != null && macBlacklistService.isBlacklisted(macAddress)) {
+            throw new BadRequestException("Thiết bị có địa chỉ MAC " + macAddress + " nằm trong danh sách cấm truy cập (Blacklist) của cơ quan an ninh mạng.");
         }
 
         // Close any prior active sessions for this device

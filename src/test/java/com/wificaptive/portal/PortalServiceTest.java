@@ -60,6 +60,9 @@ class PortalServiceTest {
     @Mock
     private com.wificaptive.portal.template.service.PortalTemplateService portalTemplateService;
 
+    @Mock
+    private com.wificaptive.network.service.MacBlacklistService macBlacklistService;
+
     private PortalService portalService;
 
     @BeforeEach
@@ -73,7 +76,8 @@ class PortalServiceTest {
                 campaignService,
                 surveyService,
                 otpVerificationService,
-                portalTemplateService
+                portalTemplateService,
+                macBlacklistService
         );
     }
 
@@ -182,5 +186,29 @@ class PortalServiceTest {
         assertTrue(ex.getMessage().contains("Gateway rejected session authorization"));
         assertEquals(SessionStatus.FAILED, pendingSession.getStatus());
         assertEquals("OPNsense connection timed out", pendingSession.getFailureReason());
+    }
+
+    @Test
+    void testAuthenticateGuest_BlacklistedDeviceRejected() {
+        WifiLocation location = new WifiLocation();
+        location.setId(1L);
+        location.setSlug("downtown-coffee");
+        location.setActive(true);
+
+        when(locationRepository.findBySlug("downtown-coffee")).thenReturn(Optional.of(location));
+
+        Device device = new Device("AA:BB:CC:DD:EE:99", "192.168.1.100", "Attacker", "Mozilla", "Linux");
+        when(deviceService.registerOrUpdateDevice(anyString(), anyString(), any())).thenReturn(device);
+        when(macBlacklistService.isBlacklisted(anyString())).thenReturn(true);
+
+        GuestLoginRequest loginRequest = new GuestLoginRequest();
+        loginRequest.setLocationSlug("downtown-coffee");
+        loginRequest.setMacAddress("AA:BB:CC:DD:EE:99");
+        loginRequest.setConsentGiven(true);
+
+        BadRequestException ex = assertThrows(BadRequestException.class, () ->
+                portalService.authenticateGuest(loginRequest, new MockHttpServletRequest()));
+
+        assertTrue(ex.getMessage().contains("Blacklist"));
     }
 }

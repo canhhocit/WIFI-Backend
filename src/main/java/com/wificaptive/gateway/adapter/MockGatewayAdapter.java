@@ -9,12 +9,14 @@ import com.wificaptive.gateway.repository.GatewayTransactionRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 
+@Primary
 @Component("mockGatewayAdapter")
 public class MockGatewayAdapter implements GatewayAdapter {
 
