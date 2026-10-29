@@ -85,3 +85,4 @@ public class SystemSetting {
         this.updatedAt = updatedAt;
     }
 }
+

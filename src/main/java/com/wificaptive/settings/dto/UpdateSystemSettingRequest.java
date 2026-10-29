@@ -28,3 +28,4 @@ public class UpdateSystemSettingRequest {
         this.description = description;
     }
 }
+

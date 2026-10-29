@@ -110,3 +110,4 @@ public class RolePermission {
         this.canApprove = canApprove;
     }
 }
+

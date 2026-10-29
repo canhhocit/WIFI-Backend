@@ -85,3 +85,4 @@ public class UpdateRolePermissionRequest {
         this.canApprove = canApprove;
     }
 }
+

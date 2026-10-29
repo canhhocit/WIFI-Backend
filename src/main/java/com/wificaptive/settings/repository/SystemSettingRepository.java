@@ -12,3 +12,4 @@ public interface SystemSettingRepository extends JpaRepository<SystemSetting, Lo
     Optional<SystemSetting> findBySettingKey(String settingKey);
     List<SystemSetting> findByCategory(String category);
 }
+

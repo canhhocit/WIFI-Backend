@@ -107,3 +107,4 @@ class AdminUserServiceTest {
         assertFalse(dto.isLocked());
     }
 }
+

@@ -65,3 +65,4 @@ class SystemSettingServiceTest {
         verify(repository).save(any(SystemSetting.class));
     }
 }
+

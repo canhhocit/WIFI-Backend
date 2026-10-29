@@ -73,3 +73,4 @@ public class SystemSettingDto {
         this.updatedAt = updatedAt;
     }
 }
+

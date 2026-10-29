@@ -83,3 +83,4 @@ public class DnsDomainRuleDto {
         this.createdAt = createdAt;
     }
 }
+

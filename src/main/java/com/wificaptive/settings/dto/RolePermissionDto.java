@@ -92,3 +92,4 @@ public class RolePermissionDto {
         this.canApprove = canApprove;
     }
 }
+

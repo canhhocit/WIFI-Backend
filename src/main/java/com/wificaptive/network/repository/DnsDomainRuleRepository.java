@@ -19,3 +19,4 @@ public interface DnsDomainRuleRepository extends JpaRepository<DnsDomainRule, Lo
     Page<DnsDomainRule> findByDomainNameContainingIgnoreCase(String domainName, Pageable pageable);
     Page<DnsDomainRule> findByRuleTypeAndDomainNameContainingIgnoreCase(String ruleType, String domainName, Pageable pageable);
 }
+

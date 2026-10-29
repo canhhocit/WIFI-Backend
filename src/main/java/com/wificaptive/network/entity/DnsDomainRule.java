@@ -97,3 +97,4 @@ public class DnsDomainRule {
         this.createdAt = createdAt;
     }
 }
+

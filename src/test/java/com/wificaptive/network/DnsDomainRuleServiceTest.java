@@ -95,3 +95,4 @@ class DnsDomainRuleServiceTest {
         assertFalse(dto.isActive());
     }
 }
+
