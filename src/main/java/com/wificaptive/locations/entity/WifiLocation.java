@@ -40,6 +40,9 @@ public class WifiLocation extends BaseEntity {
     @Column(name = "promo_banner_url", length = 500)
     private String promoBannerUrl;
 
+    @Column(name = "background_image_url", length = 500)
+    private String backgroundImageUrl = "/banners/haiphong_city_bg.jpg";
+
     @Column(name = "promo_action_url", length = 500)
     private String promoActionUrl;
 
@@ -219,6 +222,14 @@ public class WifiLocation extends BaseEntity {
 
     public void setPromoBannerUrl(String promoBannerUrl) {
         this.promoBannerUrl = promoBannerUrl;
+    }
+
+    public String getBackgroundImageUrl() {
+        return backgroundImageUrl;
+    }
+
+    public void setBackgroundImageUrl(String backgroundImageUrl) {
+        this.backgroundImageUrl = backgroundImageUrl;
     }
 
     public String getPromoActionUrl() {

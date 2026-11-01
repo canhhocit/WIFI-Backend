@@ -93,6 +93,9 @@ public class LocationService {
         location.setPromoTitle(request.getPromoTitle());
         location.setPromoContent(request.getPromoContent());
         location.setPromoBannerUrl(request.getPromoBannerUrl());
+        if (request.getBackgroundImageUrl() != null && !request.getBackgroundImageUrl().isBlank()) {
+            location.setBackgroundImageUrl(request.getBackgroundImageUrl());
+        }
         location.setPromoActionUrl(request.getPromoActionUrl());
 
         if (request.getAdminUnitId() != null) {
@@ -141,6 +144,7 @@ public class LocationService {
         if (request.getPromoTitle() != null) location.setPromoTitle(request.getPromoTitle());
         if (request.getPromoContent() != null) location.setPromoContent(request.getPromoContent());
         if (request.getPromoBannerUrl() != null) location.setPromoBannerUrl(request.getPromoBannerUrl());
+        if (request.getBackgroundImageUrl() != null) location.setBackgroundImageUrl(request.getBackgroundImageUrl());
         if (request.getPromoActionUrl() != null) location.setPromoActionUrl(request.getPromoActionUrl());
         if (request.getActive() != null) location.setActive(request.getActive());
         if (request.getAdminUnitId() != null) {

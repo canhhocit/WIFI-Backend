@@ -16,6 +16,7 @@ public class LocationDto {
     private String promoTitle;
     private String promoContent;
     private String promoBannerUrl;
+    private String backgroundImageUrl;
     private String promoActionUrl;
     private Long adminUnitId;
     private String adminUnitName;
@@ -49,6 +50,7 @@ public class LocationDto {
         dto.setPromoTitle(loc.getPromoTitle());
         dto.setPromoContent(loc.getPromoContent());
         dto.setPromoBannerUrl(loc.getPromoBannerUrl());
+        dto.setBackgroundImageUrl(loc.getBackgroundImageUrl());
         dto.setPromoActionUrl(loc.getPromoActionUrl());
         if (loc.getAdminUnit() != null) {
             dto.setAdminUnitId(loc.getAdminUnit().getId());
@@ -187,6 +189,14 @@ public class LocationDto {
 
     public void setPromoBannerUrl(String promoBannerUrl) {
         this.promoBannerUrl = promoBannerUrl;
+    }
+
+    public String getBackgroundImageUrl() {
+        return backgroundImageUrl;
+    }
+
+    public void setBackgroundImageUrl(String backgroundImageUrl) {
+        this.backgroundImageUrl = backgroundImageUrl;
     }
 
     public String getPromoActionUrl() {

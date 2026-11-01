@@ -29,6 +29,7 @@ public class UpdateLocationRequest {
     private String promoTitle;
     private String promoContent;
     private String promoBannerUrl;
+    private String backgroundImageUrl;
     private String promoActionUrl;
 
     private Long adminUnitId;
@@ -163,6 +164,14 @@ public class UpdateLocationRequest {
 
     public void setPromoBannerUrl(String promoBannerUrl) {
         this.promoBannerUrl = promoBannerUrl;
+    }
+
+    public String getBackgroundImageUrl() {
+        return backgroundImageUrl;
+    }
+
+    public void setBackgroundImageUrl(String backgroundImageUrl) {
+        this.backgroundImageUrl = backgroundImageUrl;
     }
 
     public String getPromoActionUrl() {

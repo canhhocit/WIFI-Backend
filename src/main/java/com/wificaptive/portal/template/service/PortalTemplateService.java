@@ -47,6 +47,9 @@ public class PortalTemplateService {
         t.setTemplateType(dto.getTemplateType() != null ? dto.getTemplateType() : "DEFAULT");
         t.setThemeColor(dto.getThemeColor());
         t.setBackgroundColor(dto.getBackgroundColor());
+        if (dto.getBackgroundImageUrl() != null && !dto.getBackgroundImageUrl().isBlank()) {
+            t.setBackgroundImageUrl(dto.getBackgroundImageUrl());
+        }
         t.setLogoUrl(dto.getLogoUrl());
         t.setBannerUrl(dto.getBannerUrl());
         t.setTitle(dto.getTitle());

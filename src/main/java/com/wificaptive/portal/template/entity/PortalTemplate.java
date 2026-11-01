@@ -23,6 +23,9 @@ public class PortalTemplate {
     @Column(name = "background_color", length = 50)
     private String backgroundColor = "#f8fafc";
 
+    @Column(name = "background_image_url", length = 500)
+    private String backgroundImageUrl = "/banners/haiphong_city_bg.jpg";
+
     @Column(name = "logo_url", length = 500)
     private String logoUrl;
 
@@ -76,6 +79,8 @@ public class PortalTemplate {
     public void setThemeColor(String themeColor) { this.themeColor = themeColor; }
     public String getBackgroundColor() { return backgroundColor; }
     public void setBackgroundColor(String backgroundColor) { this.backgroundColor = backgroundColor; }
+    public String getBackgroundImageUrl() { return backgroundImageUrl; }
+    public void setBackgroundImageUrl(String backgroundImageUrl) { this.backgroundImageUrl = backgroundImageUrl; }
     public String getLogoUrl() { return logoUrl; }
     public void setLogoUrl(String logoUrl) { this.logoUrl = logoUrl; }
     public String getBannerUrl() { return bannerUrl; }

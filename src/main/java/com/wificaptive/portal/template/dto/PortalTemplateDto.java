@@ -8,6 +8,7 @@ public class PortalTemplateDto {
     private String templateType;
     private String themeColor;
     private String backgroundColor;
+    private String backgroundImageUrl;
     private String logoUrl;
     private String bannerUrl;
     private String title;
@@ -24,6 +25,7 @@ public class PortalTemplateDto {
         dto.setTemplateType(t.getTemplateType());
         dto.setThemeColor(t.getThemeColor());
         dto.setBackgroundColor(t.getBackgroundColor());
+        dto.setBackgroundImageUrl(t.getBackgroundImageUrl());
         dto.setLogoUrl(t.getLogoUrl());
         dto.setBannerUrl(t.getBannerUrl());
         dto.setTitle(t.getTitle());
@@ -45,6 +47,8 @@ public class PortalTemplateDto {
     public void setThemeColor(String themeColor) { this.themeColor = themeColor; }
     public String getBackgroundColor() { return backgroundColor; }
     public void setBackgroundColor(String backgroundColor) { this.backgroundColor = backgroundColor; }
+    public String getBackgroundImageUrl() { return backgroundImageUrl; }
+    public void setBackgroundImageUrl(String backgroundImageUrl) { this.backgroundImageUrl = backgroundImageUrl; }
     public String getLogoUrl() { return logoUrl; }
     public void setLogoUrl(String logoUrl) { this.logoUrl = logoUrl; }
     public String getBannerUrl() { return bannerUrl; }
