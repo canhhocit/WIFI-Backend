@@ -80,8 +80,11 @@ public class PortalService {
             location = locationRepository.findBySlug(locationSlug.trim())
                     .orElse(null);
         } else {
-            List<WifiLocation> activeLocations = locationRepository.findByActiveTrue();
-            location = activeLocations.isEmpty() ? null : activeLocations.get(0);
+            location = locationRepository.findBySlug("hp-hb-nvh01")
+                    .orElseGet(() -> {
+                        List<WifiLocation> activeLocations = locationRepository.findByActiveTrue();
+                        return activeLocations.isEmpty() ? null : activeLocations.get(0);
+                    });
         }
 
         if (location == null || !location.isActive()) {

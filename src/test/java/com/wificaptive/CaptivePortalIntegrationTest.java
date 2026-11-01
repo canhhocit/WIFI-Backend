@@ -31,18 +31,18 @@ public class CaptivePortalIntegrationTest {
 
     @Test
     void testPortalInit_ReturnsActiveLocation() throws Exception {
-        mockMvc.perform(get("/api/portal/init?location=circle-k-central"))
+        mockMvc.perform(get("/api/portal/init?location=hp-hb-nvh01"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.location.slug").value("circle-k-central"))
-                .andExpect(jsonPath("$.data.location.name").value("Circle K - Central Station"))
+                .andExpect(jsonPath("$.data.location.slug").value("hp-hb-nvh01"))
+                .andExpect(jsonPath("$.data.location.name").value("Nhà văn hóa TDP số 1 - Phường Hoàng Văn Thụ"))
                 .andExpect(jsonPath("$.data.mockGateway").value(true));
     }
 
     @Test
     void testGuestLogin_RequiresConsent() throws Exception {
         GuestLoginRequest request = new GuestLoginRequest();
-        request.setLocationSlug("circle-k-central");
+        request.setLocationSlug("hp-hb-nvh01");
         request.setConsentGiven(false); // No consent
 
         mockMvc.perform(post("/api/portal/login")
@@ -55,7 +55,7 @@ public class CaptivePortalIntegrationTest {
     @Test
     void testGuestLogin_SuccessEndToEnd() throws Exception {
         GuestLoginRequest request = new GuestLoginRequest();
-        request.setLocationSlug("circle-k-central");
+        request.setLocationSlug("hp-hb-nvh01");
         request.setMacAddress("00:11:22:33:44:99");
         request.setGuestName("Test Traveler");
         request.setGuestContact("traveler@example.com");
