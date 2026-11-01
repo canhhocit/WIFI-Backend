@@ -47,6 +47,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // Public Portal Endpoints (Guests)
                         .requestMatchers("/api/portal/**", "/api/v1/portal/**").permitAll()
+                        // Public Static Uploads (Banners/Images for guests & admin)
+                        .requestMatchers("/uploads/**").permitAll()
                         // Public Auth Endpoint
                         .requestMatchers("/api/auth/login").permitAll()
                         // Actuator Health & Diagnostics
