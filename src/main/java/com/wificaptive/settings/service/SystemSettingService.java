@@ -41,9 +41,14 @@ public class SystemSettingService {
     @Transactional
     public SystemSettingDto updateSetting(String key, UpdateSystemSettingRequest request, String currentUsername) {
         SystemSetting setting = repository.findBySettingKey(key)
-                .orElseThrow(() -> new ResourceNotFoundException("SystemSetting", "key", key));
+                .orElseGet(() -> {
+                    SystemSetting newSetting = new SystemSetting();
+                    newSetting.setSettingKey(key);
+                    newSetting.setCategory("GENERAL");
+                    return newSetting;
+                });
 
-        String oldValue = setting.getSettingValue();
+        String oldValue = setting.getSettingValue() != null ? setting.getSettingValue() : "";
         setting.setSettingValue(request.getSettingValue());
         if (request.getDescription() != null) {
             setting.setDescription(request.getDescription());

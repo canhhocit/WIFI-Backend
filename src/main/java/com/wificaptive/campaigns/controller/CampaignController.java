@@ -66,5 +66,23 @@ public class CampaignController {
         String username = auth != null ? auth.getName() : "reviewer";
         return ApiResponse.ok("Đã từ chối chiến dịch", campaignService.rejectCampaign(id, req, username));
     }
+
+    @PutMapping("/{id}")
+    public ApiResponse<CampaignDto> updateCampaign(
+            @PathVariable Long id,
+            @Valid @RequestBody CreateCampaignRequest req,
+            Authentication auth) {
+        String username = auth != null ? auth.getName() : "editor";
+        return ApiResponse.ok("Cập nhật chiến dịch thành công", campaignService.updateCampaign(id, req, username));
+    }
+
+    @DeleteMapping("/{id}")
+    public ApiResponse<Void> deleteCampaign(
+            @PathVariable Long id,
+            Authentication auth) {
+        String username = auth != null ? auth.getName() : "admin";
+        campaignService.deleteCampaign(id, username);
+        return ApiResponse.ok("Đã xóa chiến dịch thành công", null);
+    }
 }
 

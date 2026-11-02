@@ -65,5 +65,15 @@ public class RolePermissionService {
 
         return RolePermissionDto.from(saved);
     }
+
+    @Transactional
+    public List<RolePermissionDto> updatePermissionsBatch(List<UpdateRolePermissionRequest> requests, String currentUsername) {
+        if (requests == null || requests.isEmpty()) {
+            return List.of();
+        }
+        return requests.stream()
+                .map(req -> updatePermission(req, currentUsername))
+                .toList();
+    }
 }
 

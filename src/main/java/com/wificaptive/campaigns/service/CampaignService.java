@@ -152,6 +152,42 @@ public class CampaignService {
         return CampaignDto.from(saved);
     }
 
+    @Transactional
+    public CampaignDto updateCampaign(Long id, CreateCampaignRequest req, String username) {
+        Campaign c = campaignRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Campaign not found with id: " + id));
+
+        if (req.getEndTime().isBefore(req.getStartTime())) {
+            throw new BadRequestException("Thời gian kết thúc phải diễn ra sau thời gian bắt đầu");
+        }
+
+        c.setTitle(req.getTitle().trim());
+        c.setDescription(req.getDescription());
+        c.setBannerUrl(req.getBannerUrl());
+        c.setVideoUrl(req.getVideoUrl());
+        c.setActionUrl(req.getActionUrl());
+        c.setTargetAdminUnitId(req.getTargetAdminUnitId());
+        c.setTargetLocationId(req.getTargetLocationId());
+        c.setPriority(req.getPriority());
+        c.setStartTime(req.getStartTime());
+        c.setEndTime(req.getEndTime());
+        c.setUpdatedAt(Instant.now());
+
+        Campaign saved = campaignRepository.save(c);
+        log.info("Campaign id {} updated by {}", id, username);
+        return CampaignDto.from(saved);
+    }
+
+    @Transactional
+    public void deleteCampaign(Long id, String username) {
+        Campaign c = campaignRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Campaign not found with id: " + id));
+
+        approvalRepository.deleteAll(approvalRepository.findByCampaignIdOrderByCreatedAtDesc(id));
+        campaignRepository.delete(c);
+        log.info("Campaign id {} deleted by {}", id, username);
+    }
+
     @Transactional(readOnly = true)
     public Campaign getActiveCampaignForLocation(Long locationId, Long adminUnitId) {
         Instant now = Instant.now();

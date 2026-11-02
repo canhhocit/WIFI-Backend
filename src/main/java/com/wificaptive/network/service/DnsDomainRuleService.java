@@ -108,6 +108,38 @@ public class DnsDomainRuleService {
     }
 
     @Transactional
+    public DnsDomainRuleDto updateRule(Long id, CreateDnsDomainRuleRequest request, String currentUsername) {
+        DnsDomainRule rule = repository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("DnsDomainRule", "id", id));
+
+        String newDomain = request.getDomainName().trim().toLowerCase();
+        if (!newDomain.equalsIgnoreCase(rule.getDomainName()) && repository.existsByDomainName(newDomain)) {
+            throw new BadRequestException("Tên miền '" + newDomain + "' đã tồn tại trong quy tắc lọc DNS khác");
+        }
+
+        rule.setDomainName(newDomain);
+        rule.setRuleType(request.getRuleType().trim().toUpperCase());
+        rule.setCategory(request.getCategory());
+        rule.setDescription(request.getDescription());
+        if (request.getActive() != null) {
+            rule.setActive(request.getActive());
+        }
+
+        DnsDomainRule saved = repository.save(rule);
+
+        auditService.recordEvent(
+                AuditAction.DNS_RULE_UPDATE,
+                currentUsername,
+                "SYSTEM",
+                "DNS_RULE",
+                saved.getId().toString(),
+                "Cập nhật nội dung quy tắc DNS cho tên miền: " + saved.getDomainName()
+        );
+
+        return DnsDomainRuleDto.from(saved);
+    }
+
+    @Transactional
     public void deleteRule(Long id, String currentUsername) {
         DnsDomainRule rule = repository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("DnsDomainRule", "id", id));

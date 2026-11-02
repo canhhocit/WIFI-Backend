@@ -35,3 +35,4 @@ ALTER TABLE wifi_locations
 UPDATE wifi_locations
 SET background_image_url = '/banners/haiphong_city_bg.jpg'
 WHERE background_image_url IS NULL OR background_image_url = '';
+

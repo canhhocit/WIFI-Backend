@@ -36,7 +36,7 @@ public class SystemSettingController {
     }
 
     @PutMapping("/{key}")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN')")
     public ResponseEntity<ApiResponse<SystemSettingDto>> updateSetting(
             @PathVariable String key,
             @Valid @RequestBody UpdateSystemSettingRequest request,

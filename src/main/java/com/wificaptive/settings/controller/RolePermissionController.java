@@ -36,7 +36,7 @@ public class RolePermissionController {
     }
 
     @PutMapping
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN')")
     public ResponseEntity<ApiResponse<RolePermissionDto>> updatePermission(
             @Valid @RequestBody UpdateRolePermissionRequest request,
             @AuthenticationPrincipal UserDetails principal
@@ -44,5 +44,16 @@ public class RolePermissionController {
         String username = principal != null ? principal.getUsername() : "SYSTEM";
         RolePermissionDto updated = service.updatePermission(request, username);
         return ResponseEntity.ok(ApiResponse.ok("Cập nhật quyền vai trò thành công", updated));
+    }
+
+    @PutMapping("/batch")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN')")
+    public ResponseEntity<ApiResponse<List<RolePermissionDto>>> updatePermissionsBatch(
+            @Valid @RequestBody List<UpdateRolePermissionRequest> requests,
+            @AuthenticationPrincipal UserDetails principal
+    ) {
+        String username = principal != null ? principal.getUsername() : "SYSTEM";
+        List<RolePermissionDto> updated = service.updatePermissionsBatch(requests, username);
+        return ResponseEntity.ok(ApiResponse.ok("Cập nhật hàng loạt ma trận phân quyền thành công", updated));
     }
 }

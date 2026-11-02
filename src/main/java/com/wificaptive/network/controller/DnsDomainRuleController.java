@@ -28,7 +28,7 @@ public class DnsDomainRuleController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN', 'VNPT_ENGINEER')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN', 'DISTRICT_OFFICER', 'VNPT_ENGINEER')")
     public ResponseEntity<ApiResponse<Page<DnsDomainRuleDto>>> getRules(
             @RequestParam(required = false) String ruleType,
             @RequestParam(required = false) String search,
@@ -41,19 +41,19 @@ public class DnsDomainRuleController {
     }
 
     @GetMapping("/whitelist")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN', 'VNPT_ENGINEER')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN', 'DISTRICT_OFFICER', 'VNPT_ENGINEER')")
     public ResponseEntity<ApiResponse<List<DnsDomainRuleDto>>> getActiveWhitelist() {
         return ResponseEntity.ok(ApiResponse.ok(service.getActiveWhitelist()));
     }
 
     @GetMapping("/blocklist")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN', 'VNPT_ENGINEER')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN', 'DISTRICT_OFFICER', 'VNPT_ENGINEER')")
     public ResponseEntity<ApiResponse<List<DnsDomainRuleDto>>> getActiveBlocklist() {
         return ResponseEntity.ok(ApiResponse.ok(service.getActiveBlocklist()));
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN', 'VNPT_ENGINEER')")
     public ResponseEntity<ApiResponse<DnsDomainRuleDto>> createRule(
             @Valid @RequestBody CreateDnsDomainRuleRequest request,
             @AuthenticationPrincipal UserDetails principal
@@ -63,8 +63,20 @@ public class DnsDomainRuleController {
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok("Thêm quy tắc tên miền thành công", created));
     }
 
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN', 'VNPT_ENGINEER')")
+    public ResponseEntity<ApiResponse<DnsDomainRuleDto>> updateRule(
+            @PathVariable Long id,
+            @Valid @RequestBody CreateDnsDomainRuleRequest request,
+            @AuthenticationPrincipal UserDetails principal
+    ) {
+        String username = principal != null ? principal.getUsername() : "SYSTEM";
+        DnsDomainRuleDto updated = service.updateRule(id, request, username);
+        return ResponseEntity.ok(ApiResponse.ok("Cập nhật quy tắc tên miền thành công", updated));
+    }
+
     @PatchMapping("/{id}/toggle")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN', 'VNPT_ENGINEER')")
     public ResponseEntity<ApiResponse<DnsDomainRuleDto>> toggleRule(
             @PathVariable Long id,
             @AuthenticationPrincipal UserDetails principal
@@ -75,7 +87,7 @@ public class DnsDomainRuleController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN', 'VNPT_ENGINEER')")
     public ResponseEntity<ApiResponse<Void>> deleteRule(
             @PathVariable Long id,
             @AuthenticationPrincipal UserDetails principal

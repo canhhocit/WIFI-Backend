@@ -46,7 +46,7 @@ public class AdminUserController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN')")
     public ResponseEntity<ApiResponse<AdminUserDto>> createUser(
             @Valid @RequestBody CreateAdminUserRequest request,
             @AuthenticationPrincipal UserDetails principal
@@ -57,7 +57,7 @@ public class AdminUserController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN')")
     public ResponseEntity<ApiResponse<AdminUserDto>> updateUser(
             @PathVariable Long id,
             @Valid @RequestBody UpdateAdminUserRequest request,
@@ -69,7 +69,7 @@ public class AdminUserController {
     }
 
     @PatchMapping("/{id}/toggle-status")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN')")
     public ResponseEntity<ApiResponse<AdminUserDto>> toggleUserStatus(
             @PathVariable Long id,
             @AuthenticationPrincipal UserDetails principal
@@ -80,7 +80,7 @@ public class AdminUserController {
     }
 
     @PatchMapping("/{id}/unlock")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN')")
     public ResponseEntity<ApiResponse<AdminUserDto>> unlockUser(
             @PathVariable Long id,
             @AuthenticationPrincipal UserDetails principal

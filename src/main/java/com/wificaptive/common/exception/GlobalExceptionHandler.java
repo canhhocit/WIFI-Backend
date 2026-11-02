@@ -43,6 +43,13 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
     }
 
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleMessageNotReadable(org.springframework.http.converter.HttpMessageNotReadableException ex, HttpServletRequest request) {
+        log.warn("Invalid HTTP message / JSON payload: {}", ex.getMessage());
+        ErrorResponse error = new ErrorResponse(HttpStatus.BAD_REQUEST.value(), "INVALID_PAYLOAD", "Dữ liệu gửi lên không đúng định dạng JSON hoặc mã hóa ký tự UTF-8 không hợp lệ", request.getRequestURI());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+    }
+
     @ExceptionHandler(GatewayException.class)
     public ResponseEntity<ErrorResponse> handleGatewayException(GatewayException ex, HttpServletRequest request) {
         log.error("Gateway error: {}", ex.getMessage());

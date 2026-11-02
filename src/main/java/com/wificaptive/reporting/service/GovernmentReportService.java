@@ -118,7 +118,7 @@ public class GovernmentReportService {
     public String exportReportCsv(String period) {
         GovernmentReportDto report = generateReport(period);
         StringBuilder sb = new StringBuilder();
-        sb.append("BÁO CÁO KỸ THUẬT & VẬN HÀNH MẠNG WI-FI CÔNG CỘNG TẠI 1.584 NHÀ VĂN HÓA\n");
+        sb.append("BÁO CÁO KỸ THUẬT & VẬN HÀNH MẠNG WI-FI CÔNG CỘNG\n");
         sb.append("Đơn vị: ").append(report.authorityName()).append(" - ").append(report.cityTitle()).append("\n");
         sb.append("Thời gian xuất báo cáo: ").append(report.generatedAt()).append("\n\n");
 

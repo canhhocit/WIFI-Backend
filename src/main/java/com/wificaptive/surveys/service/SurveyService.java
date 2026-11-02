@@ -175,5 +175,51 @@ public class SurveyService {
         Page<SurveyResponse> p = responseRepository.findBySurveyId(surveyId, pr);
         return PageResponse.from(p.map(SurveyResponseDto::from));
     }
+
+    @Transactional
+    public SurveyDto toggleSurvey(Long id) {
+        Survey s = surveyRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Survey not found with id: " + id));
+        s.setActive(!s.isActive());
+        Survey saved = surveyRepository.save(s);
+        log.info("Toggled survey id {} active status to {}", id, saved.isActive());
+        return getSurveyWithDetails(saved.getId());
+    }
+
+    @Transactional
+    public void deleteSurvey(Long id) {
+        Survey s = surveyRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Survey not found with id: " + id));
+
+        // Delete associated responses, rules, questions
+        responseRepository.deleteAll(responseRepository.findBySurveyId(id, PageRequest.of(0, 10000)).getContent());
+        List<SurveyQuestion> questions = questionRepository.findBySurveyIdOrderBySortOrderAsc(id);
+        for (SurveyQuestion q : questions) {
+            branchingRuleRepository.deleteAll(branchingRuleRepository.findByQuestionId(q.getId()));
+        }
+        questionRepository.deleteAll(questions);
+        surveyRepository.delete(s);
+        log.info("Deleted survey id {}", id);
+    }
+
+    @Transactional(readOnly = true)
+    public String exportResponsesCsv(Long surveyId) {
+        Survey s = surveyRepository.findById(surveyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Survey not found with id: " + surveyId));
+
+        List<SurveyResponse> list = responseRepository.findBySurveyId(surveyId, PageRequest.of(0, 10000, Sort.by(Sort.Direction.ASC, "submittedAt"))).getContent();
+        StringBuilder sb = new StringBuilder();
+        sb.append("STT,ID Phan Hoi,Dia Chi MAC,Thoi Gian Gui,Noi Dung Cau Tra Loi\n");
+        int stt = 1;
+        for (SurveyResponse r : list) {
+            String cleanJson = r.getAnswersJson() != null ? r.getAnswersJson().replace("\"", "\"\"") : "";
+            sb.append(stt++).append(",")
+              .append(r.getId()).append(",")
+              .append(r.getClientMac()).append(",")
+              .append(r.getSubmittedAt()).append(",")
+              .append("\"").append(cleanJson).append("\"\n");
+        }
+        return sb.toString();
+    }
 }
 
