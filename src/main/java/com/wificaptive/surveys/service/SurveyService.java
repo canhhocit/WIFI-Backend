@@ -91,6 +91,13 @@ public class SurveyService {
                 .orElse(null);
     }
 
+    @Transactional(readOnly = true)
+    public SurveyDto getLatestActiveSurvey() {
+        return surveyRepository.findFirstByActiveTrueOrderByCreatedAtDesc()
+                .map(s -> getSurveyWithDetails(s.getId()))
+                .orElse(null);
+    }
+
     @Transactional
     public SurveyDto createSurvey(SurveyDto dto) {
         Survey s = new Survey();

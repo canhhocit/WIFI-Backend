@@ -12,5 +12,6 @@ import java.util.Optional;
 public interface SurveyRepository extends JpaRepository<Survey, Long> {
     Page<Survey> findByActive(boolean active, Pageable pageable);
     Optional<Survey> findByCampaignIdAndActiveTrue(Long campaignId);
+    Optional<Survey> findFirstByActiveTrueOrderByCreatedAtDesc();
 }
 

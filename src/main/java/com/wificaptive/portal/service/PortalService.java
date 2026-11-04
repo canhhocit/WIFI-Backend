@@ -121,6 +121,11 @@ public class PortalService {
             }
         }
 
+        // If no survey linked to a specific campaign, load the active general/standalone survey
+        if (response.getActiveSurvey() == null && surveyService != null) {
+            response.setActiveSurvey(surveyService.getLatestActiveSurvey());
+        }
+
         // Link template
         if (portalTemplateService != null) {
             response.setPortalTemplate(portalTemplateService.getDefaultOrActive());
