@@ -81,7 +81,7 @@ public class GisMapController {
                 dto.setDistrictName(inferDistrictFromText(loc.getAddress(), loc.getName()));
             }
 
-            dto.setIspName(loc.getIspName() != null ? loc.getIspName() : "VNPT");
+            dto.setIspName(loc.getIspName() != null ? loc.getIspName() : "Viettel");
             dto.setCircuitCode(loc.getCircuitCode());
             dto.setActive(loc.isActive());
 

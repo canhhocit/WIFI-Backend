@@ -94,7 +94,7 @@ public class LocationExcelService {
                 data.setAddress(address);
                 data.setLatitude(lat);
                 data.setLongitude(lng);
-                data.setIspName(isp != null ? isp : "VNPT");
+                data.setIspName(isp != null ? isp : "Viettel");
                 data.setCircuitCode(circuitCode);
                 data.setContactName(contactName);
                 data.setContactPhone(contactPhone);
