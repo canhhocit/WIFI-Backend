@@ -1,5 +1,6 @@
 package com.wificaptive.portal.dto;
 
+import com.wificaptive.campaigns.dto.CampaignDto;
 import com.wificaptive.sessions.entity.SessionStatus;
 import java.time.Instant;
 
@@ -16,6 +17,7 @@ public class GuestSessionStatusResponse {
     private String ipAddress;
     private Integer maxBandwidthMbps;
     private String revokeReason;
+    private CampaignDto activeCampaign;
 
     public GuestSessionStatusResponse() {
     }
@@ -114,5 +116,13 @@ public class GuestSessionStatusResponse {
 
     public void setRevokeReason(String revokeReason) {
         this.revokeReason = revokeReason;
+    }
+
+    public CampaignDto getActiveCampaign() {
+        return activeCampaign;
+    }
+
+    public void setActiveCampaign(CampaignDto activeCampaign) {
+        this.activeCampaign = activeCampaign;
     }
 }

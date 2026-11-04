@@ -288,6 +288,16 @@ public class PortalService {
         resp.setMaxBandwidthMbps(session.getLocation() != null ? session.getLocation().getMaxBandwidthMbps() : 20);
         resp.setRevokeReason(session.getRevokeReason());
 
+        if (campaignService != null && session.getLocation() != null) {
+            com.wificaptive.campaigns.entity.Campaign activeCampaign = campaignService.getActiveCampaignForLocation(
+                    session.getLocation().getId(),
+                    session.getLocation().getAdminUnitId()
+            );
+            if (activeCampaign != null) {
+                resp.setActiveCampaign(com.wificaptive.campaigns.dto.CampaignDto.from(activeCampaign));
+            }
+        }
+
         return resp;
     }
 
