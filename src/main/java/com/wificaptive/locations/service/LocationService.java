@@ -39,16 +39,16 @@ public class LocationService {
     public PageResponse<LocationDto> getLocations(String query, Pageable pageable) {
         Page<WifiLocation> page;
         if (StringUtils.hasText(query)) {
-            page = locationRepository.findByNameContainingIgnoreCase(query.trim(), pageable);
+            page = locationRepository.findByNameContainingIgnoreCaseAndDeletedFalse(query.trim(), pageable);
         } else {
-            page = locationRepository.findAll(pageable);
+            page = locationRepository.findByDeletedFalse(pageable);
         }
         return PageResponse.from(page.map(LocationDto::from));
     }
 
     @Transactional(readOnly = true)
     public List<LocationDto> getActiveLocations() {
-        return locationRepository.findByActiveTrue().stream()
+        return locationRepository.findByActiveTrueAndDeletedFalse().stream()
                 .map(LocationDto::from)
                 .toList();
     }
@@ -74,7 +74,7 @@ public class LocationService {
 
     @Transactional
     public LocationDto createLocation(CreateLocationRequest request, String actorUsername) {
-        if (locationRepository.existsBySlug(request.getSlug())) {
+        if (locationRepository.existsBySlugAndDeletedFalse(request.getSlug())) {
             throw new BadRequestException("A Wi-Fi location with slug '" + request.getSlug() + "' already exists");
         }
 
@@ -184,7 +184,21 @@ public class LocationService {
         WifiLocation location = locationRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Location", "id", id));
 
-        locationRepository.delete(location);
+        // Soft delete to protect legal log compliance and avoid foreign key integrity violations
+        location.setDeleted(true);
+        location.setDeletedAt(java.time.Instant.now());
+        location.setActive(false);
+        location.setStatus("DELETED");
+        location.setStatusReason("Đã xóa khỏi hệ thống bởi " + (actorUsername != null ? actorUsername : "admin"));
+
+        // Free up unique constraints on slug and location_code for future re-creations
+        String oldSlug = location.getSlug();
+        location.setSlug(oldSlug + "-deleted-" + location.getId());
+        if (location.getLocationCode() != null) {
+            location.setLocationCode(location.getLocationCode() + "-DEL-" + location.getId());
+        }
+
+        locationRepository.save(location);
 
         auditService.recordEvent(
                 AuditAction.LOCATION_DELETE,
@@ -192,7 +206,7 @@ public class LocationService {
                 "internal",
                 "LOCATION",
                 id.toString(),
-                "Deleted Wi-Fi location: " + location.getName()
+                "Deleted Wi-Fi location: " + location.getName() + " (original slug: " + oldSlug + ")"
         );
     }
 

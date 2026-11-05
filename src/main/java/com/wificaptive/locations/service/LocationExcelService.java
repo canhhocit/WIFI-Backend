@@ -115,7 +115,7 @@ public class LocationExcelService {
                 if (code != null && !code.isBlank()) {
                     if (seenCodesInFile.contains(code.toUpperCase())) {
                         result.addError("Mã điểm bị trùng lặp trong chính file Excel: " + code);
-                    } else if (locationRepository.existsByLocationCode(code.toUpperCase())) {
+                    } else if (locationRepository.existsByLocationCodeAndDeletedFalse(code.toUpperCase())) {
                         result.addError("Mã điểm đã tồn tại trong cơ sở dữ liệu: " + code);
                     }
                     seenCodesInFile.add(code.toUpperCase());
@@ -124,7 +124,7 @@ public class LocationExcelService {
                 if (data.getSlug() != null) {
                     if (seenSlugsInFile.contains(data.getSlug().toLowerCase())) {
                         result.addError("Slug bị trùng lặp trong file: " + data.getSlug());
-                    } else if (locationRepository.existsBySlug(data.getSlug().toLowerCase())) {
+                    } else if (locationRepository.existsBySlugAndDeletedFalse(data.getSlug().toLowerCase())) {
                         result.addError("Slug đã tồn tại trong CSDL: " + data.getSlug());
                     }
                     seenSlugsInFile.add(data.getSlug().toLowerCase());
@@ -348,7 +348,7 @@ public class LocationExcelService {
     }
 
     public byte[] exportAllLocations() {
-        List<WifiLocation> locations = locationRepository.findAll();
+        List<WifiLocation> locations = locationRepository.findByDeletedFalse(org.springframework.data.domain.Pageable.unpaged()).getContent();
         try (Workbook wb = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             Sheet sheet = wb.createSheet("Danh_sach_1584_Diem_WiFi");
 

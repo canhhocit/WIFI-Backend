@@ -43,9 +43,9 @@ public class GisMapController {
     public ApiResponse<List<GisLocationPinDto>> getGisLocations() {
         List<WifiLocation> locations;
         try {
-            locations = locationRepository.findAllWithAdminUnit();
+            locations = locationRepository.findAllWithAdminUnitAndDeletedFalse();
         } catch (Exception e) {
-            locations = locationRepository.findAll();
+            locations = locationRepository.findByDeletedFalse(org.springframework.data.domain.Pageable.unpaged()).getContent();
         }
 
         List<GisLocationPinDto> result = new ArrayList<>();

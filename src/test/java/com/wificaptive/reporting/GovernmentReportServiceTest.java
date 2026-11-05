@@ -47,8 +47,8 @@ class GovernmentReportServiceTest {
 
     @Test
     void testGenerateReport_ReturnsHaiPhongMetrics() {
-        when(locationRepository.count()).thenReturn(1584L);
-        when(locationRepository.countByActiveTrue()).thenReturn(1580L);
+        when(locationRepository.countByDeletedFalse()).thenReturn(1584L);
+        when(locationRepository.countByActiveTrueAndDeletedFalse()).thenReturn(1580L);
         when(sessionRepository.count()).thenReturn(50000L);
         when(incidentRepository.count()).thenReturn(10L);
         when(incidentRepository.countByStatus("BREACHED")).thenReturn(0L);
