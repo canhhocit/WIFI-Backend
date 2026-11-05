@@ -42,8 +42,8 @@ public class AnalyticsService {
         long totalSessions = sessionRepository.count();
         long activeSessions = sessionRepository.countActiveSessions(now);
         long todaySessions = sessionRepository.countSessionsSince(startOfToday);
-        long totalLocations = locationRepository.count();
-        long activeLocations = locationRepository.findByActiveTrue().size();
+        long totalLocations = locationRepository.countByDeletedFalse();
+        long activeLocations = locationRepository.countByActiveTrueAndDeletedFalse();
         long totalDevices = deviceRepository.count();
 
         // Status breakdown

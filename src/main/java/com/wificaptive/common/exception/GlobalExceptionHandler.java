@@ -89,6 +89,22 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(error);
     }
 
+    @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponse> handleDataIntegrityViolation(org.springframework.dao.DataIntegrityViolationException ex, HttpServletRequest request) {
+        log.warn("Database integrity violation on {}: {}", request.getRequestURI(), ex.getMessage());
+        String msg = "Không thể thực hiện thao tác do dữ liệu đang có ràng buộc liên kết trong hệ thống (khóa ngoại hoặc trùng lặp dữ liệu).";
+        if (ex.getMessage() != null && ex.getMessage().toLowerCase().contains("foreign key")) {
+            msg = "Dữ liệu này đang được liên kết với các bản ghi khác trong hệ thống (thiết bị mạng, phiên truy cập, hoặc sự cố). Vui lòng kiểm tra lại.";
+        }
+        ErrorResponse error = new ErrorResponse(
+                HttpStatus.CONFLICT.value(),
+                "DATA_INTEGRITY_VIOLATION",
+                msg,
+                request.getRequestURI()
+        );
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(error);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGenericException(Exception ex, HttpServletRequest request) {
         log.error("Unhandled exception processing request to {}: {}", request.getRequestURI(), ex.getMessage(), ex);

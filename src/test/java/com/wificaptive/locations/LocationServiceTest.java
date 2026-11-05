@@ -49,7 +49,7 @@ class LocationServiceTest {
         request.setTermsAndConditions("Sample terms");
         request.setActive(true);
 
-        when(locationRepository.existsBySlug("subway-terminal")).thenReturn(false);
+        when(locationRepository.existsBySlugAndDeletedFalse("subway-terminal")).thenReturn(false);
 
         WifiLocation saved = new WifiLocation();
         saved.setId(10L);
@@ -77,7 +77,7 @@ class LocationServiceTest {
         request.setName("Existing Branch");
         request.setTermsAndConditions("Terms");
 
-        when(locationRepository.existsBySlug("existing-slug")).thenReturn(true);
+        when(locationRepository.existsBySlugAndDeletedFalse("existing-slug")).thenReturn(true);
 
         assertThrows(BadRequestException.class, () ->
                 locationService.createLocation(request, "admin"));
@@ -108,5 +108,31 @@ class LocationServiceTest {
         assertEquals("New Central Hub", result.getName());
         assertEquals(120, result.getSessionDurationMinutes());
         assertEquals("Updated terms", result.getTermsAndConditions());
+    }
+
+    @Test
+    void testDeleteLocation_SoftDeletesAndFreesSlug() {
+        WifiLocation loc = new WifiLocation();
+        loc.setId(2L);
+        loc.setSlug("hp-nq-nvh02");
+        loc.setLocationCode("LOC-HP-NQ-002");
+        loc.setName("Nhà văn hóa Khu dân cư Máy Tơ");
+        loc.setActive(true);
+
+        when(locationRepository.findById(2L)).thenReturn(Optional.of(loc));
+        when(locationRepository.save(any(WifiLocation.class))).thenAnswer(i -> i.getArgument(0));
+
+        locationService.deleteLocation(2L, "admin");
+
+        assertTrue(loc.isDeleted());
+        assertNotNull(loc.getDeletedAt());
+        assertFalse(loc.isActive());
+        assertEquals("DELETED", loc.getStatus());
+        assertEquals("hp-nq-nvh02-deleted-2", loc.getSlug());
+        assertEquals("LOC-HP-NQ-002-DEL-2", loc.getLocationCode());
+
+        verify(locationRepository, never()).delete(any());
+        verify(locationRepository).save(loc);
+        verify(auditService).recordEvent(eq(com.wificaptive.audit.entity.AuditAction.LOCATION_DELETE), eq("admin"), any(), any(), eq("2"), any());
     }
 }

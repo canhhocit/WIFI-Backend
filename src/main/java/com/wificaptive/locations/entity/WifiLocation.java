@@ -80,6 +80,12 @@ public class WifiLocation extends BaseEntity {
     @Column(name = "is_active", nullable = false)
     private boolean active = true;
 
+    @Column(name = "is_deleted", nullable = false)
+    private boolean deleted = false;
+
+    @Column(name = "deleted_at")
+    private java.time.Instant deletedAt;
+
     public WifiLocation() {
     }
 
@@ -238,5 +244,21 @@ public class WifiLocation extends BaseEntity {
 
     public void setPromoActionUrl(String promoActionUrl) {
         this.promoActionUrl = promoActionUrl;
+    }
+
+    public boolean isDeleted() {
+        return deleted;
+    }
+
+    public void setDeleted(boolean deleted) {
+        this.deleted = deleted;
+    }
+
+    public java.time.Instant getDeletedAt() {
+        return deletedAt;
+    }
+
+    public void setDeletedAt(java.time.Instant deletedAt) {
+        this.deletedAt = deletedAt;
     }
 }

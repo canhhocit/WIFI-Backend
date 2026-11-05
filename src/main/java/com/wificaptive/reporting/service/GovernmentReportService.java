@@ -37,9 +37,9 @@ public class GovernmentReportService {
     public GovernmentReportDto generateReport(String period) {
         String cleanPeriod = (period != null && !period.isBlank()) ? period.toUpperCase() : "THÁNG_HIỆN_TẠI";
 
-        int totalLocations = (int) locationRepository.count();
+        int totalLocations = (int) locationRepository.countByDeletedFalse();
         if (totalLocations == 0) totalLocations = 1584; // Target Hải Phòng NVH baseline
-        int activeLocations = (int) locationRepository.countByActiveTrue();
+        int activeLocations = (int) locationRepository.countByActiveTrueAndDeletedFalse();
         if (activeLocations == 0) activeLocations = totalLocations;
 
         double availabilityRate = totalLocations > 0 ? ((double) activeLocations / totalLocations) * 100.0 : 99.2;
