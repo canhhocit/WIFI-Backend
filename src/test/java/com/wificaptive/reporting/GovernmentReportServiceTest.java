@@ -41,8 +41,7 @@ class GovernmentReportServiceTest {
                 locationRepository,
                 sessionRepository,
                 incidentRepository,
-                adminUnitRepository
-        );
+                adminUnitRepository);
     }
 
     @Test

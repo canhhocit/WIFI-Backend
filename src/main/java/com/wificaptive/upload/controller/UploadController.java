@@ -37,9 +37,9 @@ public class UploadController {
             throw new BadRequestException("Vui lòng chọn tệp hình ảnh để tải lên.");
         }
 
-        // Limit size: 10MB
-        if (file.getSize() > 10 * 1024 * 1024) {
-            throw new BadRequestException("Kích thước tệp vượt quá giới hạn cho phép (tối đa 10MB).");
+        // Limit size: 15MB
+        if (file.getSize() > 15 * 1024 * 1024) {
+            throw new BadRequestException("Kích thước tệp vượt quá giới hạn cho phép (tối đa 15MB).");
         }
 
         String contentType = file.getContentType();
