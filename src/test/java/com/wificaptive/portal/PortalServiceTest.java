@@ -1,20 +1,26 @@
 package com.wificaptive.portal;
 
 import com.wificaptive.audit.service.AuditService;
+import com.wificaptive.campaigns.service.CampaignService;
 import com.wificaptive.common.exception.BadRequestException;
 import com.wificaptive.common.exception.GatewayException;
 import com.wificaptive.devices.entity.Device;
+import com.wificaptive.devices.repository.NetworkDeviceRepository;
 import com.wificaptive.devices.service.DeviceService;
 import com.wificaptive.gateway.adapter.GatewayAdapter;
 import com.wificaptive.gateway.dto.GatewayAuthResult;
 import com.wificaptive.locations.entity.WifiLocation;
 import com.wificaptive.locations.repository.WifiLocationRepository;
+import com.wificaptive.network.service.MacBlacklistService;
 import com.wificaptive.portal.dto.GuestLoginRequest;
 import com.wificaptive.portal.dto.GuestLoginResponse;
 import com.wificaptive.portal.service.PortalService;
+import com.wificaptive.portal.template.service.PortalTemplateService;
 import com.wificaptive.sessions.entity.GuestSession;
 import com.wificaptive.sessions.entity.SessionStatus;
 import com.wificaptive.sessions.repository.GuestSessionRepository;
+import com.wificaptive.surveys.service.SurveyService;
+import com.wificaptive.verification.service.OtpVerificationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -49,19 +55,22 @@ class PortalServiceTest {
     private AuditService auditService;
 
     @Mock
-    private com.wificaptive.campaigns.service.CampaignService campaignService;
+    private CampaignService campaignService;
 
     @Mock
-    private com.wificaptive.surveys.service.SurveyService surveyService;
+    private SurveyService surveyService;
 
     @Mock
-    private com.wificaptive.verification.service.OtpVerificationService otpVerificationService;
+    private OtpVerificationService otpVerificationService;
 
     @Mock
-    private com.wificaptive.portal.template.service.PortalTemplateService portalTemplateService;
+    private PortalTemplateService portalTemplateService;
 
     @Mock
-    private com.wificaptive.network.service.MacBlacklistService macBlacklistService;
+    private MacBlacklistService macBlacklistService;
+
+    @Mock
+    private NetworkDeviceRepository networkDeviceRepository;
 
     private PortalService portalService;
 
@@ -77,7 +86,8 @@ class PortalServiceTest {
                 surveyService,
                 otpVerificationService,
                 portalTemplateService,
-                macBlacklistService
+                macBlacklistService,
+                networkDeviceRepository
         );
     }
 
