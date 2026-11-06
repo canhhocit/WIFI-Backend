@@ -57,7 +57,7 @@ app:
     simulate-failures: ${GATEWAY_SIMULATE_FAILURES:false}
     simulate-latency-ms: ${GATEWAY_SIMULATE_LATENCY_MS:100}
     gwn-cloud:
-      base-url: ${GWN_CLOUD_BASE_URL:https://www.gwn.cloud}
+      base-url: ${GWN_CLOUD_BASE_URL:https://www.gdms.cloud}
       app-id: ${GWN_CLOUD_APP_ID:}
       app-secret: ${GWN_CLOUD_APP_SECRET:}
       network-id: ${GWN_CLOUD_NETWORK_ID:}

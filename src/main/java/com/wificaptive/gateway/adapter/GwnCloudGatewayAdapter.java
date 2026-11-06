@@ -45,7 +45,7 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
 
-    @Value("${app.gateway.gwn-cloud.base-url:https://www.gwn.cloud}")
+    @Value("${app.gateway.gwn-cloud.base-url:https://www.gdms.cloud}")
     private String gwnBaseUrl;
 
     @Value("${app.gateway.gwn-cloud.app-id:}")
@@ -244,27 +244,66 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
         Map<String, String> body = new HashMap<>();
         body.put("appId", appId.trim());
         body.put("secretKey", appSecret.trim());
+        body.put("client_id", appId.trim());
+        body.put("client_secret", appSecret.trim());
+        body.put("grant_type", "client_credentials");
 
         String json = objectMapper.writeValueAsString(body);
+        String baseUrl = gwnBaseUrl.replaceAll("/+$", "");
+        
+        // Try GDMS endpoint /oapi/oauth/token first if baseUrl contains gdms, otherwise try /api/v1.0/oauth/token
+        String tokenUrl = baseUrl.contains("gdms") 
+                ? baseUrl + "/oapi/oauth/token"
+                : baseUrl + "/api/v1.0/oauth/token";
+
         HttpRequest req = HttpRequest.newBuilder()
-                .uri(URI.create(gwnBaseUrl.replaceAll("/+$", "") + "/api/v1.0/oauth/token"))
+                .uri(URI.create(tokenUrl))
                 .header("Content-Type", "application/json")
+                .header("Accept", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(json))
                 .timeout(Duration.ofSeconds(10))
                 .build();
 
         HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+        
+        // Fallback to alternative endpoint if 404
+        if (resp.statusCode() == 404) {
+            String fallbackUrl = tokenUrl.contains("/oapi/") 
+                    ? baseUrl + "/api/v1.0/oauth/token"
+                    : baseUrl + "/oapi/oauth/token";
+            HttpRequest fallbackReq = HttpRequest.newBuilder()
+                    .uri(URI.create(fallbackUrl))
+                    .header("Content-Type", "application/json")
+                    .header("Accept", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(json))
+                    .timeout(Duration.ofSeconds(10))
+                    .build();
+            resp = httpClient.send(fallbackReq, HttpResponse.BodyHandlers.ofString());
+        }
+
         if (resp.statusCode() == 200) {
             JsonNode root = objectMapper.readTree(resp.body());
             JsonNode tokenNode = root.at("/data/token");
+            if (tokenNode.isMissingNode() || !StringUtils.hasText(tokenNode.asText())) {
+                tokenNode = root.at("/access_token");
+            }
+            if (tokenNode.isMissingNode() || !StringUtils.hasText(tokenNode.asText())) {
+                tokenNode = root.at("/data/access_token");
+            }
+            if (tokenNode.isMissingNode() || !StringUtils.hasText(tokenNode.asText())) {
+                tokenNode = root.at("/token");
+            }
+
             if (!tokenNode.isMissingNode() && StringUtils.hasText(tokenNode.asText())) {
                 cachedToken = tokenNode.asText();
-                long expireSeconds = root.at("/data/expireTime").asLong(7200);
+                long expireSeconds = root.at("/data/expireTime").asLong(
+                        root.at("/expires_in").asLong(7200)
+                );
                 tokenExpiresAt = Instant.now().plusSeconds(Math.max(60, expireSeconds - 300));
                 return cachedToken;
             }
         }
-        throw new IllegalStateException("Không thể lấy Token xác thực từ GWN Cloud (HTTP " + resp.statusCode() + "): " + resp.body());
+        throw new IllegalStateException("Không thể lấy Token xác thực từ Grandstream Cloud/GDMS (HTTP " + resp.statusCode() + "): " + resp.body());
     }
 
     private String formatMacAddress(String mac) {
