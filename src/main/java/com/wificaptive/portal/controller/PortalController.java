@@ -8,6 +8,7 @@ import com.wificaptive.portal.dto.PortalInitResponse;
 import com.wificaptive.portal.service.PortalService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -23,8 +24,13 @@ public class PortalController {
     @GetMapping("/init")
     public ApiResponse<PortalInitResponse> getPortalInit(
             @RequestParam(required = false) String location,
+            @RequestParam(required = false, name = "ap_mac") String apMacUnder,
+            @RequestParam(required = false, name = "apMac") String apMacCamel,
+            @RequestParam(required = false, name = "gw_mac") String gwMac,
             HttpServletRequest request) {
-        PortalInitResponse response = portalService.getPortalInit(location, request);
+        String apMac = StringUtils.hasText(apMacUnder) ? apMacUnder :
+                (StringUtils.hasText(apMacCamel) ? apMacCamel : gwMac);
+        PortalInitResponse response = portalService.getPortalInit(location, apMac, request);
         return ApiResponse.ok(response);
     }
 

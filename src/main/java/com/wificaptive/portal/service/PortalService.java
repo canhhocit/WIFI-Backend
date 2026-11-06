@@ -49,6 +49,33 @@ public class PortalService {
     private final com.wificaptive.verification.service.OtpVerificationService otpVerificationService;
     private final com.wificaptive.portal.template.service.PortalTemplateService portalTemplateService;
     private final com.wificaptive.network.service.MacBlacklistService macBlacklistService;
+    private final com.wificaptive.devices.repository.NetworkDeviceRepository networkDeviceRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public PortalService(
+            WifiLocationRepository locationRepository,
+            GuestSessionRepository sessionRepository,
+            DeviceService deviceService,
+            GatewayAdapter gatewayAdapter,
+            AuditService auditService,
+            com.wificaptive.campaigns.service.CampaignService campaignService,
+            com.wificaptive.surveys.service.SurveyService surveyService,
+            com.wificaptive.verification.service.OtpVerificationService otpVerificationService,
+            com.wificaptive.portal.template.service.PortalTemplateService portalTemplateService,
+            com.wificaptive.network.service.MacBlacklistService macBlacklistService,
+            com.wificaptive.devices.repository.NetworkDeviceRepository networkDeviceRepository) {
+        this.locationRepository = locationRepository;
+        this.sessionRepository = sessionRepository;
+        this.deviceService = deviceService;
+        this.gatewayAdapter = gatewayAdapter;
+        this.auditService = auditService;
+        this.campaignService = campaignService;
+        this.surveyService = surveyService;
+        this.otpVerificationService = otpVerificationService;
+        this.portalTemplateService = portalTemplateService;
+        this.macBlacklistService = macBlacklistService;
+        this.networkDeviceRepository = networkDeviceRepository;
+    }
 
     public PortalService(
             WifiLocationRepository locationRepository,
@@ -61,25 +88,35 @@ public class PortalService {
             com.wificaptive.verification.service.OtpVerificationService otpVerificationService,
             com.wificaptive.portal.template.service.PortalTemplateService portalTemplateService,
             com.wificaptive.network.service.MacBlacklistService macBlacklistService) {
-        this.locationRepository = locationRepository;
-        this.sessionRepository = sessionRepository;
-        this.deviceService = deviceService;
-        this.gatewayAdapter = gatewayAdapter;
-        this.auditService = auditService;
-        this.campaignService = campaignService;
-        this.surveyService = surveyService;
-        this.otpVerificationService = otpVerificationService;
-        this.portalTemplateService = portalTemplateService;
-        this.macBlacklistService = macBlacklistService;
+        this(locationRepository, sessionRepository, deviceService, gatewayAdapter, auditService,
+                campaignService, surveyService, otpVerificationService, portalTemplateService,
+                macBlacklistService, null);
     }
 
     @Transactional(readOnly = true)
     public PortalInitResponse getPortalInit(String locationSlug, HttpServletRequest request) {
-        WifiLocation location;
+        return getPortalInit(locationSlug, null, request);
+    }
+
+    @Transactional(readOnly = true)
+    public PortalInitResponse getPortalInit(String locationSlug, String apMac, HttpServletRequest request) {
+        WifiLocation location = null;
         if (StringUtils.hasText(locationSlug)) {
             location = locationRepository.findBySlug(locationSlug.trim())
                     .orElse(null);
-        } else {
+        }
+
+        // Auto-resolve location by AP / Gateway MAC address if locationSlug was not provided or not matched
+        if (location == null && StringUtils.hasText(apMac) && networkDeviceRepository != null) {
+            String cleanMac = normalizeMacAddress(apMac);
+            var deviceOpt = networkDeviceRepository.findByMacAddress(cleanMac);
+            if (deviceOpt.isPresent() && deviceOpt.get().getLocation() != null && deviceOpt.get().getLocation().isActive()) {
+                location = deviceOpt.get().getLocation();
+                log.info("[Portal] Auto-resolved location '{}' from AP MAC '{}'", location.getName(), cleanMac);
+            }
+        }
+
+        if (location == null) {
             location = locationRepository.findBySlug("hp-hb-nvh01")
                     .orElseGet(() -> {
                         List<WifiLocation> activeLocations = locationRepository.findByActiveTrue();
@@ -329,6 +366,13 @@ public class PortalService {
 
     private String resolveClientIp(HttpServletRequest request) {
         if (request == null) return "127.0.0.1";
+        // Check query param from GWN redirection first if present (Grandstream passes ?client_ip=...)
+        String queryIp = request.getParameter("client_ip");
+        if (!StringUtils.hasText(queryIp)) queryIp = request.getParameter("ip");
+        if (StringUtils.hasText(queryIp)) {
+            return queryIp.trim();
+        }
+
         String ip = request.getHeader("X-Forwarded-For");
         if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
             ip = request.getRemoteAddr();
@@ -340,20 +384,44 @@ public class PortalService {
     }
 
     private String resolveClientMac(HttpServletRequest request, String requestedMac) {
-        if (request != null) {
-            String headerMac = request.getHeader("X-Client-MAC");
-            if (StringUtils.hasText(headerMac) && MAC_PATTERN.matcher(headerMac.trim()).matches()) {
-                return headerMac.trim().toLowerCase();
-            }
-        }
-
         if (StringUtils.hasText(requestedMac) && MAC_PATTERN.matcher(requestedMac.trim()).matches()) {
             return requestedMac.trim().toLowerCase();
+        }
+
+        if (request != null) {
+            String queryMac = request.getParameter("client_mac");
+            if (!StringUtils.hasText(queryMac)) queryMac = request.getParameter("mac");
+            if (!StringUtils.hasText(queryMac)) queryMac = request.getParameter("clientMac");
+            if (StringUtils.hasText(queryMac)) {
+                String normalized = normalizeMacAddress(queryMac).toLowerCase();
+                if (MAC_PATTERN.matcher(normalized).matches()) {
+                    return normalized;
+                }
+            }
+
+            String headerMac = request.getHeader("X-Client-MAC");
+            if (StringUtils.hasText(headerMac)) {
+                String normalized = normalizeMacAddress(headerMac).toLowerCase();
+                if (MAC_PATTERN.matcher(normalized).matches()) {
+                    return normalized;
+                }
+            }
         }
 
         // Deterministic fallback for local browser testing
         String ip = resolveClientIp(request);
         int hash = Math.abs(ip.hashCode() % 0xFF);
         return String.format("02:42:ac:11:00:%02x", hash);
+    }
+
+    private String normalizeMacAddress(String mac) {
+        if (mac == null) return "";
+        String clean = mac.replaceAll("[^a-fA-F0-9]", "").toUpperCase();
+        if (clean.length() == 12) {
+            return String.format("%s:%s:%s:%s:%s:%s",
+                    clean.substring(0, 2), clean.substring(2, 4), clean.substring(4, 6),
+                    clean.substring(6, 8), clean.substring(8, 10), clean.substring(10, 12));
+        }
+        return mac.trim().toUpperCase();
     }
 }

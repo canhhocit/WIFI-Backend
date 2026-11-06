@@ -16,7 +16,6 @@ import java.time.Instant;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 
-@Primary
 @Component("mockGatewayAdapter")
 public class MockGatewayAdapter implements GatewayAdapter {
 
