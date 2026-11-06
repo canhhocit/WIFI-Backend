@@ -9,7 +9,6 @@ import com.wificaptive.devices.entity.Device;
 import com.wificaptive.devices.service.DeviceService;
 import com.wificaptive.gateway.adapter.GatewayAdapter;
 import com.wificaptive.gateway.dto.GatewayAuthResult;
-import com.wificaptive.gateway.dto.GatewayRevokeResult;
 import com.wificaptive.locations.dto.LocationDto;
 import com.wificaptive.locations.entity.WifiLocation;
 import com.wificaptive.locations.repository.WifiLocationRepository;

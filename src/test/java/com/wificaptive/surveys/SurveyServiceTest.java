@@ -2,7 +2,6 @@ package com.wificaptive.surveys;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wificaptive.common.exception.BadRequestException;
-import com.wificaptive.surveys.dto.SurveyDto;
 import com.wificaptive.surveys.dto.SurveyResponseDto;
 import com.wificaptive.surveys.dto.SurveyResponseSubmitRequest;
 import com.wificaptive.surveys.entity.Survey;
@@ -18,7 +17,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
 

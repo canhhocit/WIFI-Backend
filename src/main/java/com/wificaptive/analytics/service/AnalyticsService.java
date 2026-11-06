@@ -92,7 +92,6 @@ public class AnalyticsService {
         // Generate past 6 time buckets (4-hour intervals)
         for (int i = 5; i >= 0; i--) {
             Instant bucketStart = now.minus((i + 1) * 4L, ChronoUnit.HOURS);
-            Instant bucketEnd = now.minus(i * 4L, ChronoUnit.HOURS);
 
             String label = String.format("-%dh to -%dh", (i + 1) * 4, i * 4);
             if (i == 0) label = "Last 4h";

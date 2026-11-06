@@ -1,6 +1,5 @@
 package com.wificaptive.verification;
 
-import com.wificaptive.common.exception.BadRequestException;
 import com.wificaptive.verification.dto.OtpRequestDto;
 import com.wificaptive.verification.dto.OtpResultDto;
 import com.wificaptive.verification.dto.OtpVerifyRequestDto;

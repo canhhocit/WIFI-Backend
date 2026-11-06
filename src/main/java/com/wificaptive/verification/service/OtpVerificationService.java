@@ -53,7 +53,7 @@ public class OtpVerificationService {
         Instant expiresAt = Instant.now().plus(OTP_VALIDITY_SECONDS, ChronoUnit.SECONDS);
         otpStore.put(phone, new OtpEntry(code, expiresAt));
 
-        log.info("[TELCO OTP GATEWAY - SIMULATOR] Mã xác thực OTP gửi đến số {}: [{}] (Hết hạn sau 5 phút)", phone, code);
+        log.info("[TELCO OTP GATEWAY - SIMULATOR] Mã xác thực OTP gửi đến số {} (MAC {}): [{}] (Hết hạn sau 5 phút)", phone, mac, code);
 
         OtpResultDto res = new OtpResultDto();
         res.setSuccess(true);

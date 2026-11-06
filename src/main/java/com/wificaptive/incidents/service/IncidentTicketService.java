@@ -1,7 +1,6 @@
 package com.wificaptive.incidents.service;
 
 import com.wificaptive.common.dto.PageResponse;
-import com.wificaptive.common.exception.BadRequestException;
 import com.wificaptive.common.exception.ResourceNotFoundException;
 import com.wificaptive.incidents.dto.*;
 import com.wificaptive.incidents.entity.IncidentTicket;

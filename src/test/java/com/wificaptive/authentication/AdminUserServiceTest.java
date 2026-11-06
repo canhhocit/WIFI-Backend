@@ -3,7 +3,6 @@ package com.wificaptive.authentication;
 import com.wificaptive.audit.service.AuditService;
 import com.wificaptive.authentication.dto.AdminUserDto;
 import com.wificaptive.authentication.dto.CreateAdminUserRequest;
-import com.wificaptive.authentication.dto.UpdateAdminUserRequest;
 import com.wificaptive.authentication.entity.AdminRole;
 import com.wificaptive.authentication.entity.AdminUser;
 import com.wificaptive.authentication.repository.AdminUserRepository;

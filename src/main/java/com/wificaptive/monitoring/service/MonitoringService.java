@@ -71,6 +71,7 @@ public class MonitoringService {
 
         // Evaluate against active alert rules
         evaluateAlertRules(saved, device);
+        log.debug("Telemetry recorded for device {}: ping={}ms", device.getId(), m.getPingLatencyMs());
 
         return TelemetryMetricDto.from(saved);
     }

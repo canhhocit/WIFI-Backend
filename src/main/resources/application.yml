@@ -29,10 +29,8 @@ spring:
       ddl-auto: validate
     show-sql: false
     properties:
-      hibernate:
-        format_sql: true
-        jdbc:
-          time_zone: UTC
+      "[hibernate.format_sql]": true
+      "[hibernate.jdbc.time_zone]": UTC
 
   flyway:
     enabled: true

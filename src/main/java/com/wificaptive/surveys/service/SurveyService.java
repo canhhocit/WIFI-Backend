@@ -211,8 +211,9 @@ public class SurveyService {
 
     @Transactional(readOnly = true)
     public String exportResponsesCsv(Long surveyId) {
-        Survey s = surveyRepository.findById(surveyId)
-                .orElseThrow(() -> new ResourceNotFoundException("Survey not found with id: " + surveyId));
+        if (!surveyRepository.existsById(surveyId)) {
+            throw new ResourceNotFoundException("Survey not found with id: " + surveyId);
+        }
 
         List<SurveyResponse> list = responseRepository.findBySurveyId(surveyId, PageRequest.of(0, 10000, Sort.by(Sort.Direction.ASC, "submittedAt"))).getContent();
         StringBuilder sb = new StringBuilder();
