@@ -19,5 +19,6 @@ spring:
 
 app:
   gateway:
+    adapter-type: mock
     simulate-latency-ms: 0
     simulate-failures: false

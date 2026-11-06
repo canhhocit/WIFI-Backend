@@ -15,26 +15,26 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Gateway Adapter for Grandstream GWN Series (GWN7001, GWN7000 routers, GWN APs)
- * managed via Grandstream GWN Cloud (https://www.gwn.cloud) or on-premise GWN Manager.
+ * Gateway Adapter for Grandstream GWN Series (GWN7002, GWN7001, GWN7000 routers, GWN APs)
+ * managed via Grandstream GWN Cloud (https://oc.gwn.cloud) or regional GWN clusters.
  *
- * Supports:
- * 1. OAuth / API Token acquisition via App ID & App Secret (GWN Cloud Open API v1.0).
- * 2. Real hardware enforcement: Authorize client MAC with duration and bandwidth policies.
- * 3. Client session revocation: Disconnect client MAC immediately upon expiration or admin request.
- * 4. Graceful Standby Mode: If App ID / Secret are not yet configured, operates in
- *    Pre-Integration Standby Mode so the system remains fully functional until keys are pasted.
+ * Implements official Grandstream GWN-API Specification:
+ * 1. OAuth2 Client Credentials token acquisition: GET /oauth/token?grant_type=client_credentials&client_id=...&client_secret=...
+ * 2. Official SHA-256 Request Signature: sha256("&" + sortedParams + "&" + sha256(body) + "&")
+ * 3. Hardware-level Captive Portal Bypass (POST /oapi/v1.0.0/client/send/global-bypass) with action "2" (Authorize) and "1" (Revoke).
+ * 4. Pre-Integration Standby Mode: If credentials are not configured, operates in safe standby mode.
  */
 @Component("gwnCloudGatewayAdapter")
 public class GwnCloudGatewayAdapter implements GatewayAdapter {
@@ -45,7 +45,7 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
 
-    @Value("${app.gateway.gwn-cloud.base-url:https://www.gdms.cloud}")
+    @Value("${app.gateway.gwn-cloud.base-url:https://oc.gwn.cloud}")
     private String gwnBaseUrl;
 
     @Value("${app.gateway.gwn-cloud.app-id:}")
@@ -56,6 +56,9 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
 
     @Value("${app.gateway.gwn-cloud.network-id:}")
     private String networkId;
+
+    @Value("${app.gateway.gwn-cloud.device-mac:EC74D798B042}")
+    private String deviceMac;
 
     // In-memory token cache
     private volatile String cachedToken = null;
@@ -90,55 +93,47 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
         // Check if real credentials are provided
         if (!isLiveCredentialsConfigured()) {
             long latencyMs = System.currentTimeMillis() - startTime;
-            String simRef = "GWN7001-STBY-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
-            log.info("[GWN Cloud Gateway] Device authorization (STANDBY MODE - Ready for GWN7001 integration): " +
-                     "session={}, MAC={}, IP={}, duration={}m, bandwidth={}Mbps. Ref={}",
+            String simRef = "GWN7002-STBY-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+            log.info("[GWN Cloud Gateway] Device authorization (STANDBY MODE): session={}, MAC={}, IP={}, duration={}m, bandwidth={}Mbps. Ref={}",
                     sessionId, macAddress, ipAddress, duration, bandwidth, simRef);
 
             saveTransaction(sessionId, "AUTHORIZE", true, 200, null,
                     String.format("{\"gatewayRef\":\"%s\",\"status\":\"STANDBY_MODE\",\"mac\":\"%s\",\"ip\":\"%s\"}", simRef, macAddress, ipAddress),
                     latencyMs);
-            return GatewayAuthResult.success(simRef, true, "Cấp quyền truy cập Wi-Fi Nhà văn hóa (GWN7001 Sẵn sàng)", latencyMs);
+            return GatewayAuthResult.success(simRef, true, "Cấp quyền truy cập Wi-Fi Nhà văn hóa (GWN7002 Sẵn sàng)", latencyMs);
         }
 
         // Real Grandstream GWN Cloud Open API Call
         try {
-            String token = obtainGwnCloudToken();
-            String referenceCode = "GWN-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+            String targetRouterMac = cleanMacAddress(StringUtils.hasText(deviceMac) ? deviceMac : "EC74D798B042").toUpperCase();
+            String clientMacClean = cleanMacAddress(macAddress).toLowerCase();
+            String clientMacColon = formatMacAddress(macAddress).toLowerCase();
+            String clientMacParam = clientMacClean + "," + clientMacColon;
 
             Map<String, Object> payload = new HashMap<>();
-            payload.put("mac", formatMacAddress(macAddress));
-            if (StringUtils.hasText(ipAddress)) {
-                payload.put("ip", ipAddress);
-            }
-            payload.put("duration", duration);
-            payload.put("rateLimitUp", bandwidth * 1024); // kbps
-            payload.put("rateLimitDown", bandwidth * 1024); // kbps
-            if (StringUtils.hasText(networkId)) {
-                payload.put("networkId", networkId);
-            }
+            payload.put("deviceMac", targetRouterMac);
+            payload.put("clientMacs", clientMacParam);
+            payload.put("action", "2"); // "2" - Add bypass MAC on captive portal firewall
 
-            String requestBody = objectMapper.writeValueAsString(payload);
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(gwnBaseUrl.replaceAll("/+$", "") + "/api/v1.0/guest/authorize"))
-                    .header("Content-Type", "application/json")
-                    .header("Authorization", "Bearer " + token)
-                    .POST(HttpRequest.BodyPublishers.ofString(requestBody))
-                    .timeout(Duration.ofSeconds(15))
-                    .build();
+            log.info("[GWN Cloud Gateway] Sending bypass authorization: router={}, client={}, session={}",
+                    targetRouterMac, clientMacParam, sessionId);
 
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            GwnApiResponse response = executeGwnApi("v1.0.0/client/send/global-bypass", payload);
             long latencyMs = System.currentTimeMillis() - startTime;
 
-            if (response.statusCode() >= 200 && response.statusCode() < 300) {
-                log.info("[GWN Cloud Gateway] Successfully authorized MAC {} on GWN7001 router (Latency: {}ms)", macAddress, latencyMs);
-                saveTransaction(sessionId, "AUTHORIZE", true, response.statusCode(), null, response.body(), latencyMs);
-                return GatewayAuthResult.success(referenceCode, false, "Grandstream GWN7001 cấp quyền Internet thành công", latencyMs);
+            if (response.httpStatus >= 200 && response.httpStatus < 300 && response.retCode == 0) {
+                String referenceCode = "GWN-BP-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+                log.info("[GWN Cloud Gateway] Successfully bypassed Captive Portal for MAC {} on router {} (Latency: {}ms)",
+                        macAddress, targetRouterMac, latencyMs);
+                saveTransaction(sessionId, "AUTHORIZE", true, response.httpStatus, null, response.rawBody, latencyMs);
+                return GatewayAuthResult.success(referenceCode, false, "Grandstream GWN7002 mở mạng thành công qua REST API", latencyMs);
             } else {
-                log.warn("[GWN Cloud Gateway] Authorization returned HTTP {}: {}", response.statusCode(), response.body());
+                log.warn("[GWN Cloud Gateway] Authorization failed (HTTP {}, retCode: {}, msg: {}): {}",
+                        response.httpStatus, response.retCode, response.msg, response.rawBody);
                 failedOperations.incrementAndGet();
-                saveTransaction(sessionId, "AUTHORIZE", false, response.statusCode(), "GWN Cloud từ chối: " + response.statusCode(), response.body(), latencyMs);
-                return GatewayAuthResult.failure("GWN Cloud từ chối cấp quyền: " + response.statusCode(), response.statusCode(), false, latencyMs);
+                String errDetail = StringUtils.hasText(response.msg) ? response.msg : ("HTTP " + response.httpStatus);
+                saveTransaction(sessionId, "AUTHORIZE", false, response.httpStatus, "GWN Cloud từ chối: " + errDetail, response.rawBody, latencyMs);
+                return GatewayAuthResult.failure("GWN Cloud từ chối cấp quyền: " + errDetail, response.httpStatus, false, latencyMs);
             }
         } catch (Exception e) {
             long latencyMs = System.currentTimeMillis() - startTime;
@@ -166,35 +161,30 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
             saveTransaction(sessionId, "REVOKE", true, 200, null,
                     String.format("{\"gatewayRef\":\"%s\",\"status\":\"STANDBY_REVOKED\",\"mac\":\"%s\"}", gatewayReference, macAddress),
                     latencyMs);
-            return GatewayRevokeResult.success(true, "Đã thu hồi quyền kết nối (GWN7001 Standby)", latencyMs);
+            return GatewayRevokeResult.success(true, "Đã thu hồi quyền kết nối (GWN7002 Standby)", latencyMs);
         }
 
         try {
-            String token = obtainGwnCloudToken();
+            String targetRouterMac = cleanMacAddress(StringUtils.hasText(deviceMac) ? deviceMac : "EC74D798B042").toUpperCase();
+            String clientMacClean = cleanMacAddress(macAddress).toLowerCase();
+            String clientMacColon = formatMacAddress(macAddress).toLowerCase();
+            String clientMacParam = clientMacClean + "," + clientMacColon;
+
             Map<String, Object> payload = new HashMap<>();
-            payload.put("mac", formatMacAddress(macAddress));
-            if (StringUtils.hasText(networkId)) {
-                payload.put("networkId", networkId);
-            }
+            payload.put("deviceMac", targetRouterMac);
+            payload.put("clientMacs", clientMacParam);
+            payload.put("action", "1"); // "1" - Delete bypass MAC (lock firewall)
 
-            String requestBody = objectMapper.writeValueAsString(payload);
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(gwnBaseUrl.replaceAll("/+$", "") + "/api/v1.0/guest/revoke"))
-                    .header("Content-Type", "application/json")
-                    .header("Authorization", "Bearer " + token)
-                    .POST(HttpRequest.BodyPublishers.ofString(requestBody))
-                    .timeout(Duration.ofSeconds(10))
-                    .build();
-
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            GwnApiResponse response = executeGwnApi("v1.0.0/client/send/global-bypass", payload);
             long latencyMs = System.currentTimeMillis() - startTime;
 
-            boolean success = response.statusCode() >= 200 && response.statusCode() < 300;
-            saveTransaction(sessionId, "REVOKE", success, response.statusCode(), success ? null : response.body(), response.body(), latencyMs);
+            boolean success = response.httpStatus >= 200 && response.httpStatus < 300 && response.retCode == 0;
+            saveTransaction(sessionId, "REVOKE", success, response.httpStatus, success ? null : response.rawBody, response.rawBody, latencyMs);
             if (success) {
+                log.info("[GWN Cloud Gateway] Revoked bypass for MAC {} on router {} (Latency: {}ms)", macAddress, targetRouterMac, latencyMs);
                 return GatewayRevokeResult.success(false, "GWN Cloud thu hồi quyền MAC: " + macAddress, latencyMs);
             } else {
-                return GatewayRevokeResult.failure("GWN Cloud từ chối thu hồi: " + response.statusCode(), response.statusCode(), false, latencyMs);
+                return GatewayRevokeResult.failure("GWN Cloud từ chối thu hồi: " + response.msg, response.httpStatus, false, latencyMs);
             }
         } catch (Exception e) {
             long latencyMs = System.currentTimeMillis() - startTime;
@@ -210,15 +200,15 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
         dto.setAdapterType("GWN_CLOUD");
         dto.setHealthy(true);
         dto.setSimulated(!isLiveCredentialsConfigured());
-        dto.setVersion("Grandstream GWN Cloud Open API v1.0 (GWN7001 Ready)");
+        dto.setVersion("Grandstream GWN Cloud Open API v1.0 (GWN7002 Production)");
         dto.setTotalAuthorizations(totalAuthorizations.get());
         dto.setTotalRevocations(totalRevocations.get());
         dto.setFailedOperations(failedOperations.get());
 
         if (isLiveCredentialsConfigured()) {
-            dto.setStatusMessage("Đã cấu hình xác thực GWN Cloud. Sẵn sàng kích hoạt lệnh phần cứng trên router GWN7001.");
+            dto.setStatusMessage("Đã cấu hình xác thực GWN Cloud (" + gwnBaseUrl + "). Sẵn sàng kích hoạt lệnh phần cứng trên router GWN7002.");
         } else {
-            dto.setStatusMessage("Chế độ Sẵn sàng kết nối Grandstream GWN7001. Chỉ cần điền App ID & Secret Key để đồng bộ thực tế.");
+            dto.setStatusMessage("Chế độ Sẵn sàng kết nối Grandstream GWN7002. Cần cấu hình App ID & Secret Key để đồng bộ thực tế.");
         }
         return dto;
     }
@@ -229,7 +219,7 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
         return getStatus();
     }
 
-    private boolean isLiveCredentialsConfigured() {
+    public boolean isLiveCredentialsConfigured() {
         return StringUtils.hasText(appId) &&
                StringUtils.hasText(appSecret) &&
                !appId.equalsIgnoreCase("GWN_APP_ID") &&
@@ -241,74 +231,128 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
             return cachedToken;
         }
 
-        Map<String, String> body = new HashMap<>();
-        body.put("appId", appId.trim());
-        body.put("secretKey", appSecret.trim());
-        body.put("client_id", appId.trim());
-        body.put("client_secret", appSecret.trim());
-        body.put("grant_type", "client_credentials");
-
-        String json = objectMapper.writeValueAsString(body);
         String baseUrl = gwnBaseUrl.replaceAll("/+$", "");
-        
-        // Try GDMS endpoint /oapi/oauth/token first if baseUrl contains gdms, otherwise try /api/v1.0/oauth/token
-        String tokenUrl = baseUrl.contains("gdms") 
-                ? baseUrl + "/oapi/oauth/token"
-                : baseUrl + "/api/v1.0/oauth/token";
+        String tokenUrl = String.format("%s/oauth/token?grant_type=client_credentials&client_id=%s&client_secret=%s",
+                baseUrl,
+                URLEncoder.encode(appId.trim(), StandardCharsets.UTF_8),
+                URLEncoder.encode(appSecret.trim(), StandardCharsets.UTF_8)
+        );
 
         HttpRequest req = HttpRequest.newBuilder()
                 .uri(URI.create(tokenUrl))
-                .header("Content-Type", "application/json")
                 .header("Accept", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(json))
+                .header("User-Agent", "Mozilla/5.0")
+                .GET()
                 .timeout(Duration.ofSeconds(10))
                 .build();
 
         HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
-        
-        // Fallback to alternative endpoint if 404
-        if (resp.statusCode() == 404) {
-            String fallbackUrl = tokenUrl.contains("/oapi/") 
-                    ? baseUrl + "/api/v1.0/oauth/token"
-                    : baseUrl + "/oapi/oauth/token";
-            HttpRequest fallbackReq = HttpRequest.newBuilder()
-                    .uri(URI.create(fallbackUrl))
-                    .header("Content-Type", "application/json")
-                    .header("Accept", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(json))
-                    .timeout(Duration.ofSeconds(10))
-                    .build();
-            resp = httpClient.send(fallbackReq, HttpResponse.BodyHandlers.ofString());
-        }
 
         if (resp.statusCode() == 200) {
             JsonNode root = objectMapper.readTree(resp.body());
-            JsonNode tokenNode = root.at("/data/token");
-            if (tokenNode.isMissingNode() || !StringUtils.hasText(tokenNode.asText())) {
-                tokenNode = root.at("/access_token");
-            }
-            if (tokenNode.isMissingNode() || !StringUtils.hasText(tokenNode.asText())) {
-                tokenNode = root.at("/data/access_token");
-            }
-            if (tokenNode.isMissingNode() || !StringUtils.hasText(tokenNode.asText())) {
-                tokenNode = root.at("/token");
-            }
-
+            JsonNode tokenNode = root.path("access_token");
             if (!tokenNode.isMissingNode() && StringUtils.hasText(tokenNode.asText())) {
                 cachedToken = tokenNode.asText();
-                long expireSeconds = root.at("/data/expireTime").asLong(
-                        root.at("/expires_in").asLong(7200)
-                );
+                long expireSeconds = root.path("expires_in").asLong(3600);
                 tokenExpiresAt = Instant.now().plusSeconds(Math.max(60, expireSeconds - 300));
+                log.info("[GWN Cloud Gateway] Successfully obtained OAuth2 token from {} (expires in {}s)", baseUrl, expireSeconds);
                 return cachedToken;
             }
         }
-        throw new IllegalStateException("Không thể lấy Token xác thực từ Grandstream Cloud/GDMS (HTTP " + resp.statusCode() + "): " + resp.body());
+
+        throw new IllegalStateException("Không thể lấy Token xác thực từ Grandstream GWN Cloud (HTTP " + resp.statusCode() + "): " + resp.body());
+    }
+
+    /**
+     * Executes an official GWN Open API call with SHA-256 signature.
+     * Specification:
+     * params = "access_token={token}&appID={appId}&secretKey={appSecret}&timestamp={timestamp}"
+     * body_hash = sha256(body)
+     * signature = sha256("&" + params + "&" + body_hash + "&")
+     * url = "{baseUrl}/oapi/{path}?access_token={token}&appID={appId}&timestamp={timestamp}&signature={signature}"
+     */
+    private GwnApiResponse executeGwnApi(String path, Object bodyObj) throws Exception {
+        String token = obtainGwnCloudToken();
+        String timestamp = String.valueOf(System.currentTimeMillis());
+        String bodyJson = (bodyObj != null) ? objectMapper.writeValueAsString(bodyObj) : "";
+        String baseUrl = gwnBaseUrl.replaceAll("/+$", "");
+
+        // Alphabetically sorted param string: access_token, appID, secretKey, timestamp
+        String paramStr = String.format("access_token=%s&appID=%s&secretKey=%s&timestamp=%s",
+                token, appId.trim(), appSecret.trim(), timestamp);
+
+        String signBase;
+        if (StringUtils.hasText(bodyJson)) {
+            String bodyHash = sha256Hex(bodyJson);
+            signBase = "&" + paramStr + "&" + bodyHash + "&";
+        } else {
+            signBase = "&" + paramStr + "&";
+        }
+        String signature = sha256Hex(signBase);
+
+        String fullUrl = String.format("%s/oapi/%s?access_token=%s&appID=%s&timestamp=%s&signature=%s",
+                baseUrl,
+                path.replaceAll("^/+", ""),
+                URLEncoder.encode(token, StandardCharsets.UTF_8),
+                URLEncoder.encode(appId.trim(), StandardCharsets.UTF_8),
+                timestamp,
+                signature
+        );
+
+        HttpRequest.Builder builder = HttpRequest.newBuilder()
+                .uri(URI.create(fullUrl))
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json")
+                .header("User-Agent", "Mozilla/5.0")
+                .timeout(Duration.ofSeconds(15));
+
+        if (StringUtils.hasText(bodyJson)) {
+            builder.POST(HttpRequest.BodyPublishers.ofString(bodyJson));
+        } else {
+            builder.POST(HttpRequest.BodyPublishers.noBody());
+        }
+
+        HttpResponse<String> resp = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+
+        int retCode = -1;
+        String msg = "";
+        try {
+            JsonNode root = objectMapper.readTree(resp.body());
+            if (root.has("retCode")) {
+                retCode = root.path("retCode").asInt(-1);
+            }
+            if (root.has("msg")) {
+                msg = root.path("msg").asText("");
+            }
+        } catch (Exception ignored) {}
+
+        return new GwnApiResponse(resp.statusCode(), retCode, msg, resp.body());
+    }
+
+    private String sha256Hex(String input) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] hash = md.digest(input.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hexString = new StringBuilder();
+            for (byte b : hash) {
+                String hex = Integer.toHexString(0xff & b);
+                if (hex.length() == 1) hexString.append('0');
+                hexString.append(hex);
+            }
+            return hexString.toString().toLowerCase();
+        } catch (Exception e) {
+            throw new RuntimeException("SHA-256 algorithm not available", e);
+        }
+    }
+
+    private String cleanMacAddress(String mac) {
+        if (mac == null) return "000000000000";
+        return mac.replaceAll("[^a-fA-F0-9]", "");
     }
 
     private String formatMacAddress(String mac) {
         if (mac == null) return "00:00:00:00:00:00";
-        String clean = mac.replaceAll("[^a-fA-F0-9]", "").toUpperCase();
+        String clean = cleanMacAddress(mac).toUpperCase();
         if (clean.length() == 12) {
             return String.format("%s:%s:%s:%s:%s:%s",
                     clean.substring(0, 2), clean.substring(2, 4), clean.substring(4, 6),
@@ -335,5 +379,18 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
             log.warn("Could not save GWN gateway transaction: {}", e.getMessage());
         }
     }
-}
 
+    private static class GwnApiResponse {
+        final int httpStatus;
+        final int retCode;
+        final String msg;
+        final String rawBody;
+
+        GwnApiResponse(int httpStatus, int retCode, String msg, String rawBody) {
+            this.httpStatus = httpStatus;
+            this.retCode = retCode;
+            this.msg = msg;
+            this.rawBody = rawBody;
+        }
+    }
+}
