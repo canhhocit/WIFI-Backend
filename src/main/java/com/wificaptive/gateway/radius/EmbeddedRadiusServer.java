@@ -155,22 +155,30 @@ public class EmbeddedRadiusServer {
             int sessionTimeoutSeconds = 7200; // 120 minutes default
             int maxBandwidthKbps = 20000;      // 20 Mbps
 
-            if (matchedSession.isPresent()) {
-                GuestSession session = matchedSession.get();
-                if (session.getExpiresAt() != null && session.getExpiresAt().isAfter(now)) {
-                    sessionTimeoutSeconds = (int) Duration.between(now, session.getExpiresAt()).getSeconds();
+            try {
+                if (matchedSession.isPresent()) {
+                    GuestSession session = matchedSession.get();
+                    if (session.getExpiresAt() != null && session.getExpiresAt().isAfter(now)) {
+                        sessionTimeoutSeconds = (int) Duration.between(now, session.getExpiresAt()).getSeconds();
+                    }
+                    try {
+                        if (session.getLocation() != null && session.getLocation().getMaxBandwidthMbps() != null) {
+                            maxBandwidthKbps = session.getLocation().getMaxBandwidthMbps() * 1000;
+                        }
+                    } catch (Exception e) {
+                        log.debug("[Embedded RADIUS] Could not resolve session location bandwidth (lazy init): {}", e.getMessage());
+                    }
+                    log.info("[Embedded RADIUS] Matched Session ID #{}: MAC={}, Status={}, Remaining={}s, Bandwidth={}Kbps",
+                            session.getId(), session.getMacAddress(), session.getStatus(), sessionTimeoutSeconds, maxBandwidthKbps);
+                } else if (cleanMac.matches("^[0-9a-f]{12}$")) {
+                    log.info("[Embedded RADIUS] Auto-granting guest access for MAC {}: Timeout={}s, Bandwidth={}Kbps",
+                            cleanMac, sessionTimeoutSeconds, maxBandwidthKbps);
+                } else {
+                    log.warn("[Embedded RADIUS] Rejecting Access-Request for '{}': No active session and invalid MAC format.", rawUserName);
+                    return new RadiusPacket(RadiusPacket.ACCESS_REJECT, request.getPacketIdentifier());
                 }
-                if (session.getLocation() != null && session.getLocation().getMaxBandwidthMbps() != null) {
-                    maxBandwidthKbps = session.getLocation().getMaxBandwidthMbps() * 1000;
-                }
-                log.info("[Embedded RADIUS] Matched Session ID #{}: MAC={}, Status={}, Remaining={}s, Bandwidth={}Kbps",
-                        session.getId(), session.getMacAddress(), session.getStatus(), sessionTimeoutSeconds, maxBandwidthKbps);
-            } else if (cleanMac.matches("^[0-9a-f]{12}$")) {
-                log.info("[Embedded RADIUS] Auto-granting guest access for MAC {}: Timeout={}s, Bandwidth={}Kbps",
-                        cleanMac, sessionTimeoutSeconds, maxBandwidthKbps);
-            } else {
-                log.warn("[Embedded RADIUS] Rejecting Access-Request for '{}': No active session and invalid MAC format.", rawUserName);
-                return new RadiusPacket(RadiusPacket.ACCESS_REJECT, request.getPacketIdentifier());
+            } catch (Exception e) {
+                log.warn("[Embedded RADIUS] Error evaluating session for '{}', falling back to default accept: {}", rawUserName, e.getMessage());
             }
 
             // Construct Access-Accept response packet
