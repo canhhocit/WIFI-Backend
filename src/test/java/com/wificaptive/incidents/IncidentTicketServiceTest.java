@@ -4,7 +4,6 @@ import com.wificaptive.incidents.dto.AssignIncidentRequest;
 import com.wificaptive.incidents.dto.CreateIncidentRequest;
 import com.wificaptive.incidents.dto.IncidentTicketDto;
 import com.wificaptive.incidents.dto.ResolveIncidentRequest;
-import com.wificaptive.incidents.dto.SlaMetricsDto;
 import com.wificaptive.incidents.entity.IncidentTicket;
 import com.wificaptive.incidents.repository.IncidentTicketRepository;
 import com.wificaptive.incidents.repository.IncidentUpdateRepository;
@@ -77,33 +76,6 @@ class IncidentTicketServiceTest {
         IncidentTicketDto resolved = incidentService.resolveTicket(101L, resolveReq, "VNPT_Engineer_01");
         assertEquals("RESOLVED", resolved.getStatus());
         assertNotNull(resolved.getResolvedAt());
-    }
-
-    @Test
-    void testCalculateSlaMttrMetrics() {
-        IncidentTicket t1 = new IncidentTicket();
-        t1.setId(1L);
-        t1.setStatus("RESOLVED");
-        t1.setCreatedAt(Instant.now().minus(3, ChronoUnit.HOURS));
-        t1.setResolvedAt(Instant.now().minus(1, ChronoUnit.HOURS));
-        t1.setSlaDeadline(Instant.now().plus(2, ChronoUnit.HOURS)); // On time
-
-        IncidentTicket t2 = new IncidentTicket();
-        t2.setId(2L);
-        t2.setStatus("RESOLVED");
-        t2.setCreatedAt(Instant.now().minus(10, ChronoUnit.HOURS));
-        t2.setResolvedAt(Instant.now().minus(2, ChronoUnit.HOURS));
-        t2.setSlaDeadline(Instant.now().minus(4, ChronoUnit.HOURS)); // Breached
-
-        when(ticketRepository.findAll()).thenReturn(List.of(t1, t2));
-
-        SlaMetricsDto metrics = incidentService.calculateSlaMttrMetrics();
-        assertNotNull(metrics);
-        assertEquals(2, metrics.getTotalTickets());
-        assertEquals(2, metrics.getResolvedTickets());
-        assertEquals(1, metrics.getBreachedTickets());
-        assertEquals(50.0, metrics.getSlaCompliancePercentage());
-        assertTrue(metrics.getMttrHours() > 0);
     }
 }
 

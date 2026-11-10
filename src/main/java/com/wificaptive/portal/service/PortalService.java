@@ -172,6 +172,13 @@ public class PortalService {
         response.setMacRemembered(isRemembered);
         response.setOtpRequired(!isRemembered);
 
+        // Check concurrent capacity
+        long currentActive = sessionRepository.countActiveSessionsByLocation(location.getId(), java.time.Instant.now());
+        int maxUsers = location.getMaxConcurrentUsers() != null ? location.getMaxConcurrentUsers() : 50;
+        response.setCurrentActiveUsers(currentActive);
+        response.setMaxConcurrentUsers(maxUsers);
+        response.setCapacityReached(currentActive >= maxUsers);
+
         return response;
     }
 
@@ -201,6 +208,14 @@ public class PortalService {
         // Check MAC Blacklist
         if (macBlacklistService != null && macBlacklistService.isBlacklisted(macAddress)) {
             throw new BadRequestException("Thiết bị có địa chỉ MAC " + macAddress + " nằm trong danh sách cấm truy cập (Blacklist) của cơ quan an ninh mạng.");
+        }
+
+        // Check concurrent users limit for location
+        int maxUsers = location.getMaxConcurrentUsers() != null ? location.getMaxConcurrentUsers() : 50;
+        long currentActive = sessionRepository.countActiveSessionsByLocation(location.getId(), Instant.now());
+        if (currentActive >= maxUsers) {
+            throw new BadRequestException("Điểm phát sóng tại " + location.getName() + " hiện đã đạt giới hạn tối đa (" +
+                    currentActive + "/" + maxUsers + " người kết nối). Vui lòng thử lại sau khi có người rời đi để đảm bảo chất lượng mạng.");
         }
 
         // Close any prior active sessions for this device

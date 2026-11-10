@@ -11,6 +11,9 @@ public class LocationDto {
     private String description;
     private Integer sessionDurationMinutes;
     private Integer maxBandwidthMbps;
+    private Integer maxConcurrentUsers = 50;
+    private Long activeSessionsCount = 0L;
+    private Double capacityUsagePercent = 0.0;
     private String termsAndConditions;
     private String welcomeMessage;
     private String promoTitle;
@@ -45,6 +48,7 @@ public class LocationDto {
         dto.setDescription(loc.getDescription());
         dto.setSessionDurationMinutes(loc.getSessionDurationMinutes());
         dto.setMaxBandwidthMbps(loc.getMaxBandwidthMbps());
+        dto.setMaxConcurrentUsers(loc.getMaxConcurrentUsers());
         dto.setTermsAndConditions(loc.getTermsAndConditions());
         dto.setWelcomeMessage(loc.getWelcomeMessage());
         dto.setPromoTitle(loc.getPromoTitle());
@@ -125,6 +129,30 @@ public class LocationDto {
 
     public void setMaxBandwidthMbps(Integer maxBandwidthMbps) {
         this.maxBandwidthMbps = maxBandwidthMbps;
+    }
+
+    public Integer getMaxConcurrentUsers() {
+        return maxConcurrentUsers != null ? maxConcurrentUsers : 50;
+    }
+
+    public void setMaxConcurrentUsers(Integer maxConcurrentUsers) {
+        this.maxConcurrentUsers = maxConcurrentUsers;
+    }
+
+    public Long getActiveSessionsCount() {
+        return activeSessionsCount != null ? activeSessionsCount : 0L;
+    }
+
+    public void setActiveSessionsCount(Long activeSessionsCount) {
+        this.activeSessionsCount = activeSessionsCount;
+    }
+
+    public Double getCapacityUsagePercent() {
+        return capacityUsagePercent != null ? capacityUsagePercent : 0.0;
+    }
+
+    public void setCapacityUsagePercent(Double capacityUsagePercent) {
+        this.capacityUsagePercent = capacityUsagePercent;
     }
 
     public String getTermsAndConditions() {

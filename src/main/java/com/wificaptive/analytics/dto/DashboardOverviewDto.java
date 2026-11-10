@@ -14,6 +14,7 @@ public class DashboardOverviewDto {
     private GatewayStatusDto gatewayStatus;
     private Map<String, Long> sessionsByStatus;
     private List<LocationAnalyticsDto> locationDistribution;
+    private DeviceTopologySummaryDto topology;
 
     public DashboardOverviewDto() {
     }
@@ -88,5 +89,13 @@ public class DashboardOverviewDto {
 
     public void setLocationDistribution(List<LocationAnalyticsDto> locationDistribution) {
         this.locationDistribution = locationDistribution;
+    }
+
+    public DeviceTopologySummaryDto getTopology() {
+        return topology;
+    }
+
+    public void setTopology(DeviceTopologySummaryDto topology) {
+        this.topology = topology;
     }
 }

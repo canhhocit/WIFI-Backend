@@ -54,11 +54,6 @@ app:
     adapter-type: ${GATEWAY_ADAPTER_TYPE:gwn_cloud}
     simulate-failures: ${GATEWAY_SIMULATE_FAILURES:false}
     simulate-latency-ms: ${GATEWAY_SIMULATE_LATENCY_MS:100}
-    radius:
-      enabled: ${RADIUS_SERVER_ENABLED:true}
-      port: ${RADIUS_SERVER_PORT:1812}
-      acct-port: ${RADIUS_ACCT_PORT:1813}
-      shared-secret: ${RADIUS_SHARED_SECRET:HaiPhongSecret@2026}
     gwn-cloud:
       base-url: ${GWN_CLOUD_BASE_URL:https://oc.gwn.cloud}
       app-id: ${GWN_CLOUD_APP_ID:}

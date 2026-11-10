@@ -1,9 +1,12 @@
 package com.wificaptive.analytics.service;
 
 import com.wificaptive.analytics.dto.DashboardOverviewDto;
+import com.wificaptive.analytics.dto.DeviceTopologySummaryDto;
 import com.wificaptive.analytics.dto.HourlyTrendDto;
 import com.wificaptive.analytics.dto.LocationAnalyticsDto;
+import com.wificaptive.devices.entity.NetworkDevice;
 import com.wificaptive.devices.repository.DeviceRepository;
+import com.wificaptive.devices.repository.NetworkDeviceRepository;
 import com.wificaptive.gateway.adapter.GatewayAdapter;
 import com.wificaptive.locations.repository.WifiLocationRepository;
 import com.wificaptive.sessions.entity.SessionStatus;
@@ -22,16 +25,19 @@ public class AnalyticsService {
     private final WifiLocationRepository locationRepository;
     private final DeviceRepository deviceRepository;
     private final GatewayAdapter gatewayAdapter;
+    private final NetworkDeviceRepository networkDeviceRepository;
 
     public AnalyticsService(
             GuestSessionRepository sessionRepository,
             WifiLocationRepository locationRepository,
             DeviceRepository deviceRepository,
-            GatewayAdapter gatewayAdapter) {
+            GatewayAdapter gatewayAdapter,
+            NetworkDeviceRepository networkDeviceRepository) {
         this.sessionRepository = sessionRepository;
         this.locationRepository = locationRepository;
         this.deviceRepository = deviceRepository;
         this.gatewayAdapter = gatewayAdapter;
+        this.networkDeviceRepository = networkDeviceRepository;
     }
 
     @Transactional(readOnly = true)
@@ -80,6 +86,40 @@ public class AnalyticsService {
         dto.setGatewayStatus(gatewayAdapter.getStatus());
         dto.setSessionsByStatus(statusMap);
         dto.setLocationDistribution(locationDistribution);
+
+        // Topology metrics calculation
+        List<NetworkDevice> netDevs = networkDeviceRepository.findAll();
+        long routerOnline = netDevs.stream().filter(d -> "ROUTER".equalsIgnoreCase(d.getDeviceType()) && "ONLINE".equalsIgnoreCase(d.getStatus())).count();
+        long routerOffline = netDevs.stream().filter(d -> "ROUTER".equalsIgnoreCase(d.getDeviceType()) && !"ONLINE".equalsIgnoreCase(d.getStatus())).count();
+
+        long switchOnline = netDevs.stream().filter(d -> "SWITCH".equalsIgnoreCase(d.getDeviceType()) && "ONLINE".equalsIgnoreCase(d.getStatus())).count();
+        long switchOffline = netDevs.stream().filter(d -> "SWITCH".equalsIgnoreCase(d.getDeviceType()) && !"ONLINE".equalsIgnoreCase(d.getStatus())).count();
+
+        long apOnline = netDevs.stream().filter(d -> ("ACCESS_POINT".equalsIgnoreCase(d.getDeviceType()) || "AP".equalsIgnoreCase(d.getDeviceType())) && "ONLINE".equalsIgnoreCase(d.getStatus())).count();
+        long apOffline = netDevs.stream().filter(d -> ("ACCESS_POINT".equalsIgnoreCase(d.getDeviceType()) || "AP".equalsIgnoreCase(d.getDeviceType())) && !"ONLINE".equalsIgnoreCase(d.getStatus())).count();
+
+        long clientWireless = activeSessions;
+        long clientWired = 0;
+
+        long errorLocs = Math.max(0, totalLocations - activeLocations);
+        long totalDevsCount = netDevs.size();
+        long errorDevsCount = netDevs.stream().filter(d -> !"ONLINE".equalsIgnoreCase(d.getStatus())).count();
+
+        DeviceTopologySummaryDto topology = new DeviceTopologySummaryDto(
+                totalLocations,
+                errorLocs,
+                totalDevsCount,
+                errorDevsCount,
+                routerOnline,
+                routerOffline,
+                switchOnline,
+                switchOffline,
+                apOnline,
+                apOffline,
+                clientWired,
+                clientWireless
+        );
+        dto.setTopology(topology);
 
         return dto;
     }

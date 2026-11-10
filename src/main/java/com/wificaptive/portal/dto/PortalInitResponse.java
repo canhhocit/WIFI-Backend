@@ -16,6 +16,9 @@ public class PortalInitResponse {
     private PortalTemplateDto portalTemplate;
     private boolean macRemembered;
     private boolean otpRequired;
+    private Long currentActiveUsers = 0L;
+    private Integer maxConcurrentUsers = 50;
+    private boolean capacityReached = false;
 
     public PortalInitResponse() {
     }
@@ -57,4 +60,13 @@ public class PortalInitResponse {
 
     public boolean isOtpRequired() { return otpRequired; }
     public void setOtpRequired(boolean otpRequired) { this.otpRequired = otpRequired; }
+
+    public Long getCurrentActiveUsers() { return currentActiveUsers != null ? currentActiveUsers : 0L; }
+    public void setCurrentActiveUsers(Long currentActiveUsers) { this.currentActiveUsers = currentActiveUsers; }
+
+    public Integer getMaxConcurrentUsers() { return maxConcurrentUsers != null ? maxConcurrentUsers : 50; }
+    public void setMaxConcurrentUsers(Integer maxConcurrentUsers) { this.maxConcurrentUsers = maxConcurrentUsers; }
+
+    public boolean isCapacityReached() { return capacityReached; }
+    public void setCapacityReached(boolean capacityReached) { this.capacityReached = capacityReached; }
 }

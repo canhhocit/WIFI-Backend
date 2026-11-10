@@ -3,6 +3,7 @@ package com.wificaptive.devices.controller;
 import com.wificaptive.common.dto.ApiResponse;
 import com.wificaptive.common.dto.PageResponse;
 import com.wificaptive.devices.dto.DeviceSwapRequest;
+import com.wificaptive.devices.dto.DeviceSyncSummaryDto;
 import com.wificaptive.devices.dto.NetworkDeviceDto;
 import com.wificaptive.devices.service.NetworkDeviceService;
 import jakarta.validation.Valid;
@@ -52,5 +53,21 @@ public class NetworkDeviceController {
             Authentication auth) {
         NetworkDeviceDto dto = deviceService.swapDevice(request, auth != null ? auth.getName() : "admin");
         return ResponseEntity.ok(ApiResponse.ok("Hoán đổi thiết bị thành công", dto));
+    }
+
+    @PostMapping("/sync-grandstream")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<DeviceSyncSummaryDto>> syncFromGrandstream(Authentication auth) {
+        DeviceSyncSummaryDto summary = deviceService.syncFromGrandstream(auth != null ? auth.getName() : "admin");
+        return ResponseEntity.ok(ApiResponse.ok(summary.getMessage(), summary));
+    }
+
+    @PostMapping("/{id}/reboot")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<NetworkDeviceDto>> rebootDevice(
+            @PathVariable Long id,
+            Authentication auth) {
+        NetworkDeviceDto dto = deviceService.rebootDevice(id, auth != null ? auth.getName() : "admin");
+        return ResponseEntity.ok(ApiResponse.ok("Lệnh khởi động lại thiết bị đã được phát thành công", dto));
     }
 }

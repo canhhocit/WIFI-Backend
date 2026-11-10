@@ -12,13 +12,18 @@ import com.wificaptive.locations.dto.LocationDto;
 import com.wificaptive.locations.dto.UpdateLocationRequest;
 import com.wificaptive.locations.entity.WifiLocation;
 import com.wificaptive.locations.repository.WifiLocationRepository;
+import com.wificaptive.sessions.repository.GuestSessionRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class LocationService {
@@ -26,13 +31,23 @@ public class LocationService {
     private final WifiLocationRepository locationRepository;
     private final AdministrativeUnitRepository adminUnitRepository;
     private final AuditService auditService;
+    private final GuestSessionRepository sessionRepository;
 
     public LocationService(WifiLocationRepository locationRepository,
             AdministrativeUnitRepository adminUnitRepository,
             AuditService auditService) {
+        this(locationRepository, adminUnitRepository, auditService, null);
+    }
+
+    @Autowired
+    public LocationService(WifiLocationRepository locationRepository,
+            AdministrativeUnitRepository adminUnitRepository,
+            AuditService auditService,
+            @Autowired(required = false) GuestSessionRepository sessionRepository) {
         this.locationRepository = locationRepository;
         this.adminUnitRepository = adminUnitRepository;
         this.auditService = auditService;
+        this.sessionRepository = sessionRepository;
     }
 
     @Transactional(readOnly = true)
@@ -43,7 +58,27 @@ public class LocationService {
         } else {
             page = locationRepository.findByDeletedFalse(pageable);
         }
-        return PageResponse.from(page.map(LocationDto::from));
+
+        Map<Long, Long> activeMap = new HashMap<>();
+        if (sessionRepository != null) {
+            List<Object[]> groups = sessionRepository.countActiveSessionsGroupByLocation(Instant.now());
+            for (Object[] g : groups) {
+                if (g[0] != null && g[1] != null) {
+                    activeMap.put(((Number) g[0]).longValue(), ((Number) g[1]).longValue());
+                }
+            }
+        }
+
+        Page<LocationDto> dtoPage = page.map(loc -> {
+            LocationDto dto = LocationDto.from(loc);
+            long active = activeMap.getOrDefault(loc.getId(), 0L);
+            dto.setActiveSessionsCount(active);
+            int maxUsers = loc.getMaxConcurrentUsers() != null ? loc.getMaxConcurrentUsers() : 50;
+            dto.setCapacityUsagePercent(maxUsers > 0 ? Math.min(100.0, Math.round((active * 100.0 / maxUsers) * 10.0) / 10.0) : 0.0);
+            return dto;
+        });
+
+        return PageResponse.from(dtoPage);
     }
 
     @Transactional(readOnly = true)
@@ -57,7 +92,14 @@ public class LocationService {
     public LocationDto getLocationById(Long id) {
         WifiLocation loc = locationRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Location", "id", id));
-        return LocationDto.from(loc);
+        LocationDto dto = LocationDto.from(loc);
+        if (sessionRepository != null) {
+            long active = sessionRepository.countActiveSessionsByLocation(id, Instant.now());
+            dto.setActiveSessionsCount(active);
+            int maxUsers = loc.getMaxConcurrentUsers() != null ? loc.getMaxConcurrentUsers() : 50;
+            dto.setCapacityUsagePercent(maxUsers > 0 ? Math.min(100.0, Math.round((active * 100.0 / maxUsers) * 10.0) / 10.0) : 0.0);
+        }
+        return dto;
     }
 
     @Transactional(readOnly = true)
@@ -115,6 +157,11 @@ public class LocationService {
         location.setCircuitCode(request.getCircuitCode());
         location.setContactName(request.getContactName());
         location.setContactPhone(request.getContactPhone());
+        if (request.getMaxConcurrentUsers() != null) {
+            location.setMaxConcurrentUsers(request.getMaxConcurrentUsers());
+        } else {
+            location.setMaxConcurrentUsers(50);
+        }
 
         WifiLocation saved = locationRepository.save(location);
 
@@ -143,6 +190,8 @@ public class LocationService {
             location.setSessionDurationMinutes(request.getSessionDurationMinutes());
         if (request.getMaxBandwidthMbps() != null)
             location.setMaxBandwidthMbps(request.getMaxBandwidthMbps());
+        if (request.getMaxConcurrentUsers() != null)
+            location.setMaxConcurrentUsers(request.getMaxConcurrentUsers());
         if (request.getTermsAndConditions() != null)
             location.setTermsAndConditions(request.getTermsAndConditions());
         if (request.getWelcomeMessage() != null)

@@ -25,6 +25,9 @@ public class WifiLocation extends BaseEntity {
     @Column(name = "max_bandwidth_mbps", nullable = false)
     private Integer maxBandwidthMbps = 20;
 
+    @Column(name = "max_concurrent_users", nullable = false)
+    private Integer maxConcurrentUsers = 50;
+
     @Column(name = "terms_and_conditions", nullable = false, columnDefinition = "TEXT")
     private String termsAndConditions;
 
@@ -149,6 +152,14 @@ public class WifiLocation extends BaseEntity {
 
     public void setMaxBandwidthMbps(Integer maxBandwidthMbps) {
         this.maxBandwidthMbps = maxBandwidthMbps;
+    }
+
+    public Integer getMaxConcurrentUsers() {
+        return maxConcurrentUsers != null ? maxConcurrentUsers : 50;
+    }
+
+    public void setMaxConcurrentUsers(Integer maxConcurrentUsers) {
+        this.maxConcurrentUsers = maxConcurrentUsers;
     }
 
     public String getTermsAndConditions() {

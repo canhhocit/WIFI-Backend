@@ -17,7 +17,6 @@ import org.springframework.stereotype.Component;
  * based on configuration property 'app.gateway.adapter-type':
  *
  * - 'gwn_cloud' / 'grandstream': Grandstream GWN7001 via GWN.Cloud
- * - 'opnsense': OPNsense Captive Portal API
  * - 'mock': Local simulation engine
  */
 @Primary
@@ -27,7 +26,6 @@ public class DelegatingGatewayAdapter implements GatewayAdapter {
     private static final Logger log = LoggerFactory.getLogger(DelegatingGatewayAdapter.class);
 
     private final GatewayAdapter mockGatewayAdapter;
-    private final GatewayAdapter opnsenseGatewayAdapter;
     private final GatewayAdapter gwnCloudGatewayAdapter;
 
     @Value("${app.gateway.adapter-type:gwn_cloud}")
@@ -35,11 +33,9 @@ public class DelegatingGatewayAdapter implements GatewayAdapter {
 
     public DelegatingGatewayAdapter(
             @Qualifier("mockGatewayAdapter") GatewayAdapter mockGatewayAdapter,
-            @Qualifier("opnsenseGatewayAdapter") GatewayAdapter opnsenseGatewayAdapter,
             @Qualifier("gwnCloudGatewayAdapter") GatewayAdapter gwnCloudGatewayAdapter
     ) {
         this.mockGatewayAdapter = mockGatewayAdapter;
-        this.opnsenseGatewayAdapter = opnsenseGatewayAdapter;
         this.gwnCloudGatewayAdapter = gwnCloudGatewayAdapter;
     }
 
@@ -50,7 +46,6 @@ public class DelegatingGatewayAdapter implements GatewayAdapter {
 
         String type = configuredAdapterType.trim().toLowerCase();
         return switch (type) {
-            case "opnsense" -> opnsenseGatewayAdapter;
             case "mock" -> mockGatewayAdapter;
             case "gwn_cloud", "grandstream", "gwn7001" -> gwnCloudGatewayAdapter;
             default -> {

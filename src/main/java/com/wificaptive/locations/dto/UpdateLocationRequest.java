@@ -21,6 +21,10 @@ public class UpdateLocationRequest {
     @Max(value = 1000, message = "Max bandwidth cannot exceed 1000 Mbps")
     private Integer maxBandwidthMbps;
 
+    @Min(value = 1, message = "Max concurrent users must be at least 1")
+    @Max(value = 10000, message = "Max concurrent users cannot exceed 10000")
+    private Integer maxConcurrentUsers;
+
     @NotBlank(message = "Terms and conditions are required")
     private String termsAndConditions;
 
@@ -86,6 +90,14 @@ public class UpdateLocationRequest {
 
     public void setMaxBandwidthMbps(Integer maxBandwidthMbps) {
         this.maxBandwidthMbps = maxBandwidthMbps;
+    }
+
+    public Integer getMaxConcurrentUsers() {
+        return maxConcurrentUsers;
+    }
+
+    public void setMaxConcurrentUsers(Integer maxConcurrentUsers) {
+        this.maxConcurrentUsers = maxConcurrentUsers;
     }
 
     public String getTermsAndConditions() {

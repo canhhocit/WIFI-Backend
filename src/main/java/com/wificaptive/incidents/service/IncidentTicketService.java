@@ -137,45 +137,5 @@ public class IncidentTicketService {
         log.info("Ticket {} marked as RESOLVED by {}", saved.getTicketCode(), actor);
         return IncidentTicketDto.from(saved);
     }
-
-    @Transactional(readOnly = true)
-    public SlaMetricsDto calculateSlaMttrMetrics() {
-        List<IncidentTicket> all = ticketRepository.findAll();
-        long total = all.size();
-        long open = all.stream().filter(t -> !"RESOLVED".equalsIgnoreCase(t.getStatus()) && !"CLOSED".equalsIgnoreCase(t.getStatus())).count();
-        long resolved = all.stream().filter(t -> "RESOLVED".equalsIgnoreCase(t.getStatus()) || "CLOSED".equalsIgnoreCase(t.getStatus())).count();
-
-        long breached = all.stream().filter(t -> {
-            if (t.getResolvedAt() != null) {
-                return t.getResolvedAt().isAfter(t.getSlaDeadline());
-            } else {
-                return Instant.now().isAfter(t.getSlaDeadline());
-            }
-        }).count();
-
-        double compliance = total > 0 ? ((double) (total - breached) / total) * 100.0 : 100.0;
-
-        // Calculate MTTR in hours for resolved tickets
-        double totalResolutionHours = 0;
-        int resolvedWithDuration = 0;
-        for (IncidentTicket t : all) {
-            if (t.getResolvedAt() != null && t.getCreatedAt() != null) {
-                long durationMins = Duration.between(t.getCreatedAt(), t.getResolvedAt()).toMinutes();
-                totalResolutionHours += (durationMins / 60.0);
-                resolvedWithDuration++;
-            }
-        }
-
-        double mttr = resolvedWithDuration > 0 ? (totalResolutionHours / resolvedWithDuration) : 0.0;
-
-        SlaMetricsDto dto = new SlaMetricsDto();
-        dto.setTotalTickets(total);
-        dto.setOpenTickets(open);
-        dto.setResolvedTickets(resolved);
-        dto.setBreachedTickets(breached);
-        dto.setSlaCompliancePercentage(Math.round(compliance * 10.0) / 10.0);
-        dto.setMttrHours(Math.round(mttr * 10.0) / 10.0);
-        return dto;
-    }
 }
 

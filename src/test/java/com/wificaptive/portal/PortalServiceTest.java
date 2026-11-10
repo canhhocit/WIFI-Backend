@@ -221,4 +221,31 @@ class PortalServiceTest {
 
         assertTrue(ex.getMessage().contains("Blacklist"));
     }
+
+    @Test
+    void testAuthenticateGuest_CapacityLimitExceeded_ThrowsBadRequestException() {
+        WifiLocation location = new WifiLocation();
+        location.setId(1L);
+        location.setName("Nhà văn hóa Cát Bà");
+        location.setSlug("nvh-cat-ba");
+        location.setActive(true);
+        location.setMaxConcurrentUsers(30);
+
+        when(locationRepository.findBySlug("nvh-cat-ba")).thenReturn(Optional.of(location));
+
+        Device device = new Device("11:22:33:44:55:66", "192.168.1.50", "GuestPhone", "Mozilla", "Android");
+        when(deviceService.registerOrUpdateDevice(anyString(), anyString(), any())).thenReturn(device);
+
+        when(sessionRepository.countActiveSessionsByLocation(eq(1L), any())).thenReturn(30L);
+
+        GuestLoginRequest loginRequest = new GuestLoginRequest();
+        loginRequest.setLocationSlug("nvh-cat-ba");
+        loginRequest.setMacAddress("11:22:33:44:55:66");
+        loginRequest.setConsentGiven(true);
+
+        BadRequestException ex = assertThrows(BadRequestException.class, () ->
+                portalService.authenticateGuest(loginRequest, new MockHttpServletRequest()));
+
+        assertTrue(ex.getMessage().contains("giới hạn tối đa (30/30 người kết nối)"));
+    }
 }

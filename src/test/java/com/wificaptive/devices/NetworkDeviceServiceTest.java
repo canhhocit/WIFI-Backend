@@ -2,12 +2,16 @@ package com.wificaptive.devices;
 
 import com.wificaptive.audit.service.AuditService;
 import com.wificaptive.devices.dto.DeviceSwapRequest;
+import com.wificaptive.devices.dto.DeviceSyncSummaryDto;
 import com.wificaptive.devices.dto.NetworkDeviceDto;
 import com.wificaptive.devices.entity.DeviceSwapLog;
 import com.wificaptive.devices.entity.NetworkDevice;
 import com.wificaptive.devices.repository.DeviceSwapLogRepository;
 import com.wificaptive.devices.repository.NetworkDeviceRepository;
 import com.wificaptive.devices.service.NetworkDeviceService;
+import com.wificaptive.gateway.adapter.GwnCloudGatewayAdapter;
+import com.wificaptive.gateway.dto.GwnDeviceSyncDto;
+import com.wificaptive.gateway.dto.GwnRebootResult;
 import com.wificaptive.locations.entity.WifiLocation;
 import com.wificaptive.locations.repository.WifiLocationRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -17,6 +21,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -37,6 +42,9 @@ class NetworkDeviceServiceTest {
 
     @Mock
     private AuditService auditService;
+
+    @Mock
+    private GwnCloudGatewayAdapter gwnCloudGatewayAdapter;
 
     @InjectMocks
     private NetworkDeviceService deviceService;
@@ -89,6 +97,48 @@ class NetworkDeviceServiceTest {
         assertThat(oldDevice.getStatus()).isEqualTo("DECOMMISSIONED");
 
         verify(swapLogRepository).save(any(DeviceSwapLog.class));
+        verify(auditService).recordEvent(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void testSyncFromGrandstream_success() {
+        GwnDeviceSyncDto cloudDev = new GwnDeviceSyncDto(
+                "00:1A:2B:3C:4D:5E",
+                "GWN7002 Cat Ba",
+                "GWN7002",
+                "Grandstream",
+                "192.168.1.50",
+                "ONLINE",
+                "1.0.9.15",
+                20,
+                55,
+                7200L
+        );
+        when(gwnCloudGatewayAdapter.fetchDevicesFromCloud()).thenReturn(List.of(cloudDev));
+        when(deviceRepository.findByMacAddress("00:1A:2B:3C:4D:5E")).thenReturn(Optional.of(oldDevice));
+        when(deviceRepository.save(any(NetworkDevice.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        DeviceSyncSummaryDto summary = deviceService.syncFromGrandstream("admin");
+
+        assertThat(summary).isNotNull();
+        assertThat(summary.getSyncedCount()).isEqualTo(1);
+        assertThat(summary.getUpdatedCount()).isEqualTo(1);
+        assertThat(oldDevice.getIpAddress()).isEqualTo("192.168.1.50");
+        assertThat(oldDevice.getCpuUsagePercent()).isEqualTo(20);
+        verify(auditService).recordEvent(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void testRebootDevice_success() {
+        when(deviceRepository.findById(10L)).thenReturn(Optional.of(oldDevice));
+        when(gwnCloudGatewayAdapter.rebootDeviceOnCloud("00:1A:2B:3C:4D:5E"))
+                .thenReturn(GwnRebootResult.success("Reboot ok", "00:1A:2B:3C:4D:5E", true, 50));
+        when(deviceRepository.save(any(NetworkDevice.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        NetworkDeviceDto result = deviceService.rebootDevice(10L, "admin");
+
+        assertThat(result).isNotNull();
+        assertThat(oldDevice.getStatus()).isEqualTo("REBOOTING");
         verify(auditService).recordEvent(any(), any(), any(), any(), any(), any());
     }
 }

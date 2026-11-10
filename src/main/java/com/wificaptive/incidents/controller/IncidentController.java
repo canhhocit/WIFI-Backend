@@ -56,10 +56,5 @@ public class IncidentController {
         String actor = auth != null ? auth.getName() : "technician";
         return ApiResponse.ok("Xác nhận giải quyết sự cố thành công", ticketService.resolveTicket(id, req, actor));
     }
-
-    @GetMapping("/sla-metrics")
-    public ApiResponse<SlaMetricsDto> getSlaMetrics() {
-        return ApiResponse.ok(ticketService.calculateSlaMttrMetrics());
-    }
 }
 
