@@ -5,11 +5,14 @@ import com.wificaptive.common.exception.BadRequestException;
 import com.wificaptive.surveys.dto.SurveyResponseDto;
 import com.wificaptive.surveys.dto.SurveyResponseSubmitRequest;
 import com.wificaptive.surveys.entity.Survey;
+import com.wificaptive.surveys.entity.SurveyQuestion;
 import com.wificaptive.surveys.entity.SurveyResponse;
 import com.wificaptive.surveys.repository.SurveyBranchingRuleRepository;
 import com.wificaptive.surveys.repository.SurveyQuestionRepository;
 import com.wificaptive.surveys.repository.SurveyRepository;
 import com.wificaptive.surveys.repository.SurveyResponseRepository;
+import com.wificaptive.locations.repository.WifiLocationRepository;
+import com.wificaptive.surveys.service.SurveyExcelService;
 import com.wificaptive.surveys.service.SurveyService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -39,6 +42,12 @@ class SurveyServiceTest {
     @Mock
     private SurveyResponseRepository responseRepository;
 
+    @Mock
+    private WifiLocationRepository locationRepository;
+
+    @Mock
+    private SurveyExcelService surveyExcelService;
+
     private SurveyService surveyService;
     private ObjectMapper objectMapper = new ObjectMapper();
 
@@ -49,6 +58,8 @@ class SurveyServiceTest {
                 questionRepository,
                 branchingRuleRepository,
                 responseRepository,
+                locationRepository,
+                surveyExcelService,
                 objectMapper
         );
     }
@@ -98,6 +109,54 @@ class SurveyServiceTest {
         assertNotNull(result);
         assertEquals(11, s.getCurrentResponsesCount());
         verify(surveyRepository, times(1)).save(s);
+    }
+
+    @Test
+    void testGetSurveyAnalyticsComputesBreakdownAndPercentage() {
+        Survey s = new Survey();
+        s.setId(5L);
+        s.setTitle("Khảo sát tiện ích số TDP 1");
+        s.setMaxResponsesQuota(200);
+
+        when(surveyRepository.findById(5L)).thenReturn(Optional.of(s));
+
+        SurveyQuestion q1 = new SurveyQuestion();
+        q1.setId(10L);
+        q1.setSurveyId(5L);
+        q1.setQuestionText("Chất lượng Wi-Fi");
+        q1.setQuestionType("SINGLE_CHOICE");
+        q1.setOptionsJson("[\"Tốt\",\"Kém\"]");
+
+        when(questionRepository.findBySurveyIdOrderBySortOrderAsc(5L)).thenReturn(java.util.List.of(q1));
+
+        SurveyResponse r1 = new SurveyResponse();
+        r1.setId(1L);
+        r1.setSurveyId(5L);
+        r1.setAnswersJson("{\"10\":\"Tốt\"}");
+
+        SurveyResponse r2 = new SurveyResponse();
+        r2.setId(2L);
+        r2.setAnswersJson("{\"10\":\"Tốt\"}");
+
+        SurveyResponse r3 = new SurveyResponse();
+        r3.setId(3L);
+        r3.setAnswersJson("{\"10\":\"Kém\"}");
+
+        when(responseRepository.findBySurveyId(eq(5L), any(org.springframework.data.domain.Pageable.class)))
+                .thenReturn(new org.springframework.data.domain.PageImpl<>(java.util.List.of(r1, r2, r3)));
+
+        var analytics = surveyService.getSurveyAnalytics(5L);
+        assertNotNull(analytics);
+        assertEquals(3, analytics.getTotalResponses());
+        assertEquals(200, analytics.getMaxResponsesQuota());
+        assertEquals(1.5, analytics.getCompletionRatePercent());
+        assertEquals(1, analytics.getQuestionAnalytics().size());
+
+        var qa = analytics.getQuestionAnalytics().get(0);
+        assertEquals(2L, qa.getOptionCounts().get("Tốt"));
+        assertEquals(1L, qa.getOptionCounts().get("Kém"));
+        assertEquals(66.7, qa.getOptionPercentages().get("Tốt"));
+        assertEquals(33.3, qa.getOptionPercentages().get("Kém"));
     }
 }
 

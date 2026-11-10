@@ -17,14 +17,16 @@ import com.wificaptive.surveys.repository.SurveyResponseRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.wificaptive.locations.entity.WifiLocation;
+import com.wificaptive.locations.repository.WifiLocationRepository;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -36,6 +38,8 @@ public class SurveyService {
     private final SurveyQuestionRepository questionRepository;
     private final SurveyBranchingRuleRepository branchingRuleRepository;
     private final SurveyResponseRepository responseRepository;
+    private final WifiLocationRepository locationRepository;
+    private final SurveyExcelService surveyExcelService;
     private final ObjectMapper objectMapper;
 
     public SurveyService(
@@ -43,11 +47,15 @@ public class SurveyService {
             SurveyQuestionRepository questionRepository,
             SurveyBranchingRuleRepository branchingRuleRepository,
             SurveyResponseRepository responseRepository,
+            WifiLocationRepository locationRepository,
+            SurveyExcelService surveyExcelService,
             ObjectMapper objectMapper) {
         this.surveyRepository = surveyRepository;
         this.questionRepository = questionRepository;
         this.branchingRuleRepository = branchingRuleRepository;
         this.responseRepository = responseRepository;
+        this.locationRepository = locationRepository;
+        this.surveyExcelService = surveyExcelService;
         this.objectMapper = objectMapper;
     }
 
@@ -177,10 +185,182 @@ public class SurveyService {
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<SurveyResponseDto> getResponses(Long surveyId, int page, int size) {
+    public PageResponse<SurveyResponseDto> getResponses(Long surveyId, Long locationId, int page, int size) {
         PageRequest pr = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "submittedAt"));
-        Page<SurveyResponse> p = responseRepository.findBySurveyId(surveyId, pr);
-        return PageResponse.from(p.map(SurveyResponseDto::from));
+        Page<SurveyResponse> p;
+        if (locationId != null && locationId > 0) {
+            p = responseRepository.findBySurveyIdAndLocationId(surveyId, locationId, pr);
+        } else {
+            p = responseRepository.findBySurveyId(surveyId, pr);
+        }
+
+        Map<Long, String> locationNameMap = new HashMap<>();
+        for (WifiLocation loc : locationRepository.findAll()) {
+            locationNameMap.put(loc.getId(), loc.getName());
+        }
+
+        return PageResponse.from(p.map(r -> {
+            SurveyResponseDto dto = SurveyResponseDto.from(r);
+            if (r.getLocationId() != null) {
+                dto.setLocationName(locationNameMap.getOrDefault(r.getLocationId(), "Chung hệ thống"));
+            } else {
+                dto.setLocationName("Chung hệ thống");
+            }
+            return dto;
+        }));
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<SurveyResponseDto> getResponses(Long surveyId, int page, int size) {
+        return getResponses(surveyId, null, page, size);
+    }
+
+    @Transactional(readOnly = true)
+    public SurveyAnalyticsDto getSurveyAnalytics(Long surveyId) {
+        Survey survey = surveyRepository.findById(surveyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Survey not found with id: " + surveyId));
+
+        List<SurveyQuestion> questions = questionRepository.findBySurveyIdOrderBySortOrderAsc(surveyId);
+        List<SurveyResponse> responses = responseRepository.findBySurveyId(surveyId, PageRequest.of(0, 10000, Sort.by(Sort.Direction.DESC, "submittedAt"))).getContent();
+
+        Map<Long, String> locationNameMap = new HashMap<>();
+        for (WifiLocation loc : locationRepository.findAll()) {
+            locationNameMap.put(loc.getId(), loc.getName());
+        }
+
+        SurveyAnalyticsDto analytics = new SurveyAnalyticsDto();
+        analytics.setSurveyId(survey.getId());
+        analytics.setSurveyTitle(survey.getTitle());
+        analytics.setTotalResponses(responses.size());
+        analytics.setMaxResponsesQuota(survey.getMaxResponsesQuota() != null ? survey.getMaxResponsesQuota() : 1000);
+        double completionPct = analytics.getMaxResponsesQuota() > 0
+                ? Math.min(100.0, (responses.size() * 100.0 / analytics.getMaxResponsesQuota()))
+                : 0.0;
+        analytics.setCompletionRatePercent(Math.round(completionPct * 10.0) / 10.0);
+
+        // Location distribution
+        Map<String, Long> locDist = new LinkedHashMap<>();
+        for (SurveyResponse r : responses) {
+            String locName = r.getLocationId() != null ? locationNameMap.getOrDefault(r.getLocationId(), "Chung hệ thống") : "Chung hệ thống";
+            locDist.put(locName, locDist.getOrDefault(locName, 0L) + 1);
+        }
+        analytics.setLocationDistribution(locDist);
+
+        // Question analytics
+        List<SurveyAnalyticsDto.QuestionAnalyticsDto> qList = new ArrayList<>();
+        double overallRatingSum = 0.0;
+        long overallRatingCount = 0;
+
+        for (SurveyQuestion q : questions) {
+            SurveyAnalyticsDto.QuestionAnalyticsDto qa = new SurveyAnalyticsDto.QuestionAnalyticsDto();
+            qa.setQuestionId(q.getId());
+            qa.setQuestionText(q.getQuestionText());
+            qa.setQuestionType(q.getQuestionType() != null ? q.getQuestionType() : "SINGLE_CHOICE");
+            qa.setRequired(q.isRequired());
+
+            List<String> options = new ArrayList<>();
+            if (q.getOptionsJson() != null && !q.getOptionsJson().isBlank()) {
+                try {
+                    options = objectMapper.readValue(q.getOptionsJson(), new TypeReference<List<String>>() {});
+                } catch (Exception ignored) {}
+            }
+
+            Map<String, Long> optionCounts = new LinkedHashMap<>();
+            for (String opt : options) {
+                optionCounts.put(opt, 0L);
+            }
+
+            Map<Integer, Long> ratingCounts = new LinkedHashMap<>();
+            for (int i = 1; i <= 5; i++) ratingCounts.put(i, 0L);
+
+            List<SurveyAnalyticsDto.TextFeedbackItemDto> textList = new ArrayList<>();
+            long answeredCount = 0;
+            double ratingSum = 0.0;
+            long ratingNum = 0;
+
+            for (SurveyResponse r : responses) {
+                Map<String, Object> ansMap = parseAnswersJson(r.getAnswersJson());
+                Object ansVal = ansMap.get(q.getId().toString());
+                if (ansVal == null) continue;
+
+                answeredCount++;
+                String locName = r.getLocationId() != null ? locationNameMap.getOrDefault(r.getLocationId(), "Chung hệ thống") : "Chung hệ thống";
+
+                if ("TEXT".equalsIgnoreCase(qa.getQuestionType())) {
+                    String strVal = ansVal.toString().trim();
+                    if (!strVal.isEmpty()) {
+                        textList.add(new SurveyAnalyticsDto.TextFeedbackItemDto(
+                                r.getId(), locName, r.getClientMac(), r.getSubmittedAt(), strVal
+                        ));
+                    }
+                } else if ("RATING".equalsIgnoreCase(qa.getQuestionType())) {
+                    try {
+                        int star = Integer.parseInt(ansVal.toString().trim());
+                        if (star >= 1 && star <= 5) {
+                            ratingCounts.put(star, ratingCounts.getOrDefault(star, 0L) + 1);
+                            ratingSum += star;
+                            ratingNum++;
+                            overallRatingSum += star;
+                            overallRatingCount++;
+                        }
+                    } catch (Exception ignored) {}
+                } else if ("MULTI_CHOICE".equalsIgnoreCase(qa.getQuestionType())) {
+                    List<?> selectedList = (ansVal instanceof List<?>) ? (List<?>) ansVal : List.of(ansVal.toString());
+                    for (Object item : selectedList) {
+                        String optStr = item.toString().trim();
+                        optionCounts.put(optStr, optionCounts.getOrDefault(optStr, 0L) + 1);
+                    }
+                } else {
+                    String optStr = ansVal.toString().trim();
+                    optionCounts.put(optStr, optionCounts.getOrDefault(optStr, 0L) + 1);
+                }
+            }
+
+            qa.setTotalAnswersCount(answeredCount);
+            qa.setOptionCounts(optionCounts);
+
+            Map<String, Double> optionPercentages = new LinkedHashMap<>();
+            if (answeredCount > 0) {
+                for (Map.Entry<String, Long> entry : optionCounts.entrySet()) {
+                    double pct = Math.round((entry.getValue() * 100.0 / answeredCount) * 10.0) / 10.0;
+                    optionPercentages.put(entry.getKey(), pct);
+                }
+            }
+            qa.setOptionPercentages(optionPercentages);
+
+            if (ratingNum > 0) {
+                qa.setAverageRating(Math.round((ratingSum / ratingNum) * 100.0) / 100.0);
+                qa.setRatingCounts(ratingCounts);
+            }
+            qa.setTextResponses(textList);
+            qList.add(qa);
+        }
+
+        analytics.setQuestionAnalytics(qList);
+        if (overallRatingCount > 0) {
+            analytics.setAverageRating(Math.round((overallRatingSum / overallRatingCount) * 100.0) / 100.0);
+        }
+        return analytics;
+    }
+
+    private Map<String, Object> parseAnswersJson(String json) {
+        if (json == null || json.isBlank()) return Collections.emptyMap();
+        try {
+            return objectMapper.readValue(json, new TypeReference<Map<String, Object>>() {});
+        } catch (Exception e) {
+            return Collections.emptyMap();
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public byte[] exportResponsesExcel(Long surveyId) {
+        Survey survey = surveyRepository.findById(surveyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Survey not found with id: " + surveyId));
+        List<SurveyQuestion> questions = questionRepository.findBySurveyIdOrderBySortOrderAsc(surveyId);
+        List<SurveyResponse> responses = responseRepository.findBySurveyId(surveyId, PageRequest.of(0, 10000, Sort.by(Sort.Direction.ASC, "submittedAt"))).getContent();
+        SurveyAnalyticsDto analytics = getSurveyAnalytics(surveyId);
+
+        return surveyExcelService.generateSurveyExcel(survey, questions, responses, analytics);
     }
 
     @Transactional

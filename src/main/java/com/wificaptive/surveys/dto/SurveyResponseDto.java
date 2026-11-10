@@ -7,6 +7,7 @@ public class SurveyResponseDto {
     private Long id;
     private Long surveyId;
     private Long locationId;
+    private String locationName;
     private String clientMac;
     private String answersJson;
     private Instant submittedAt;
@@ -28,6 +29,8 @@ public class SurveyResponseDto {
     public void setSurveyId(Long surveyId) { this.surveyId = surveyId; }
     public Long getLocationId() { return locationId; }
     public void setLocationId(Long locationId) { this.locationId = locationId; }
+    public String getLocationName() { return locationName; }
+    public void setLocationName(String locationName) { this.locationName = locationName; }
     public String getClientMac() { return clientMac; }
     public void setClientMac(String clientMac) { this.clientMac = clientMac; }
     public String getAnswersJson() { return answersJson; }

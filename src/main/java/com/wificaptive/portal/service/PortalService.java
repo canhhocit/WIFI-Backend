@@ -177,7 +177,11 @@ public class PortalService {
         int maxUsers = location.getMaxConcurrentUsers() != null ? location.getMaxConcurrentUsers() : 50;
         response.setCurrentActiveUsers(currentActive);
         response.setMaxConcurrentUsers(maxUsers);
-        response.setCapacityReached(currentActive >= maxUsers);
+
+        long otherActive = (clientMacHint != null && !clientMacHint.isBlank())
+                ? sessionRepository.countActiveSessionsByLocationExcludingMac(location.getId(), clientMacHint, java.time.Instant.now())
+                : currentActive;
+        response.setCapacityReached(otherActive >= maxUsers);
 
         return response;
     }
@@ -210,21 +214,21 @@ public class PortalService {
             throw new BadRequestException("Thiết bị có địa chỉ MAC " + macAddress + " nằm trong danh sách cấm truy cập (Blacklist) của cơ quan an ninh mạng.");
         }
 
-        // Check concurrent users limit for location
-        int maxUsers = location.getMaxConcurrentUsers() != null ? location.getMaxConcurrentUsers() : 50;
-        long currentActive = sessionRepository.countActiveSessionsByLocation(location.getId(), Instant.now());
-        if (currentActive >= maxUsers) {
-            throw new BadRequestException("Điểm phát sóng tại " + location.getName() + " hiện đã đạt giới hạn tối đa (" +
-                    currentActive + "/" + maxUsers + " người kết nối). Vui lòng thử lại sau khi có người rời đi để đảm bảo chất lượng mạng.");
-        }
-
-        // Close any prior active sessions for this device
+        // Close any prior active sessions for this device first (renewal / re-authentication)
         List<GuestSession> existingActive = sessionRepository.findActiveSessionsByMac(macAddress, Instant.now());
         for (GuestSession prior : existingActive) {
             log.info("Closing previous session {} for MAC {} due to re-authentication", prior.getId(), macAddress);
             gatewayAdapter.revokeSession(prior.getId(), macAddress, clientIp, prior.getGatewayReference());
             prior.setStatus(SessionStatus.EXPIRED);
             sessionRepository.save(prior);
+        }
+
+        // Check concurrent users limit for location (excluding other sessions of this device)
+        int maxUsers = location.getMaxConcurrentUsers() != null ? location.getMaxConcurrentUsers() : 50;
+        long otherActive = sessionRepository.countActiveSessionsByLocationExcludingMac(location.getId(), macAddress, Instant.now());
+        if (otherActive >= maxUsers) {
+            throw new BadRequestException("Điểm phát sóng tại " + location.getName() + " hiện đã đạt giới hạn tối đa (" +
+                    otherActive + "/" + maxUsers + " người kết nối). Vui lòng thử lại sau khi có người rời đi để đảm bảo chất lượng mạng.");
         }
 
         // 1. Create session in PENDING state
@@ -397,18 +401,52 @@ public class PortalService {
         return (ip != null && !ip.isBlank()) ? ip : "127.0.0.1";
     }
 
+    private boolean isInfrastructureDeviceMac(String mac) {
+        if (!StringUtils.hasText(mac) || networkDeviceRepository == null) return false;
+        String clean = mac.replaceAll("[^a-fA-F0-9]", "").toLowerCase();
+        try {
+            return networkDeviceRepository.findAll().stream().anyMatch(dev -> {
+                String devClean = (dev.getMacAddress() != null)
+                        ? dev.getMacAddress().replaceAll("[^a-fA-F0-9]", "").toLowerCase()
+                        : "";
+                return !devClean.isEmpty() && clean.equals(devClean);
+            });
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     private String resolveClientMac(HttpServletRequest request, String requestedMac) {
         if (StringUtils.hasText(requestedMac) && MAC_PATTERN.matcher(requestedMac.trim()).matches()) {
-            return requestedMac.trim().toLowerCase();
+            String candidate = requestedMac.trim().toLowerCase();
+            if (!isInfrastructureDeviceMac(candidate)) {
+                return candidate;
+            }
+            log.warn("Candidate requestedMac {} belongs to an infrastructure AP/Router, ignoring as client MAC", candidate);
         }
 
         if (request != null) {
             String queryMac = request.getParameter("client_mac");
-            if (!StringUtils.hasText(queryMac)) queryMac = request.getParameter("mac");
             if (!StringUtils.hasText(queryMac)) queryMac = request.getParameter("clientMac");
+            if (!StringUtils.hasText(queryMac)) queryMac = request.getParameter("usermac");
+            if (!StringUtils.hasText(queryMac)) queryMac = request.getParameter("u_mac");
+
+            // Look for AP MAC in query params
+            String apMac = request.getParameter("ap_mac");
+            if (!StringUtils.hasText(apMac)) apMac = request.getParameter("apmac");
+            if (!StringUtils.hasText(apMac)) apMac = request.getParameter("gw_mac");
+
+            // Only check fallback "mac" query parameter if it doesn't match the AP MAC
+            if (!StringUtils.hasText(queryMac)) {
+                String generalMac = request.getParameter("mac");
+                if (StringUtils.hasText(generalMac) && (apMac == null || !generalMac.equalsIgnoreCase(apMac))) {
+                    queryMac = generalMac;
+                }
+            }
+
             if (StringUtils.hasText(queryMac)) {
                 String normalized = normalizeMacAddress(queryMac).toLowerCase();
-                if (MAC_PATTERN.matcher(normalized).matches()) {
+                if (MAC_PATTERN.matcher(normalized).matches() && !isInfrastructureDeviceMac(normalized)) {
                     return normalized;
                 }
             }
@@ -416,7 +454,7 @@ public class PortalService {
             String headerMac = request.getHeader("X-Client-MAC");
             if (StringUtils.hasText(headerMac)) {
                 String normalized = normalizeMacAddress(headerMac).toLowerCase();
-                if (MAC_PATTERN.matcher(normalized).matches()) {
+                if (MAC_PATTERN.matcher(normalized).matches() && !isInfrastructureDeviceMac(normalized)) {
                     return normalized;
                 }
             }

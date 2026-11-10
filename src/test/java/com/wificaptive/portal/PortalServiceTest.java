@@ -236,7 +236,7 @@ class PortalServiceTest {
         Device device = new Device("11:22:33:44:55:66", "192.168.1.50", "GuestPhone", "Mozilla", "Android");
         when(deviceService.registerOrUpdateDevice(anyString(), anyString(), any())).thenReturn(device);
 
-        when(sessionRepository.countActiveSessionsByLocation(eq(1L), any())).thenReturn(30L);
+        when(sessionRepository.countActiveSessionsByLocationExcludingMac(eq(1L), anyString(), any())).thenReturn(30L);
 
         GuestLoginRequest loginRequest = new GuestLoginRequest();
         loginRequest.setLocationSlug("nvh-cat-ba");
@@ -247,5 +247,43 @@ class PortalServiceTest {
                 portalService.authenticateGuest(loginRequest, new MockHttpServletRequest()));
 
         assertTrue(ex.getMessage().contains("giới hạn tối đa (30/30 người kết nối)"));
+    }
+
+    @Test
+    void testAuthenticateGuest_ReconnectingSameDevice_DoesNotSelfBlock() {
+        WifiLocation location = new WifiLocation();
+        location.setId(1L);
+        location.setName("Nhà văn hóa Cát Bà");
+        location.setSlug("nvh-cat-ba");
+        location.setActive(true);
+        location.setMaxConcurrentUsers(1);
+        location.setSessionDurationMinutes(60);
+        location.setMaxBandwidthMbps(20);
+
+        when(locationRepository.findBySlug("nvh-cat-ba")).thenReturn(Optional.of(location));
+
+        Device device = new Device("11:22:33:44:55:66", "192.168.1.50", "GuestPhone", "Mozilla", "Android");
+        when(deviceService.registerOrUpdateDevice(anyString(), anyString(), any())).thenReturn(device);
+
+        // Other active sessions = 0 (because the 1 active session in the system belongs to this same MAC)
+        when(sessionRepository.countActiveSessionsByLocationExcludingMac(eq(1L), eq("11:22:33:44:55:66"), any())).thenReturn(0L);
+
+        when(sessionRepository.save(any(GuestSession.class))).thenAnswer(invocation -> {
+            GuestSession s = invocation.getArgument(0);
+            s.setId(999L);
+            return s;
+        });
+
+        when(gatewayAdapter.authorizeSession(anyLong(), anyString(), anyString(), anyInt(), anyInt()))
+                .thenReturn(com.wificaptive.gateway.dto.GatewayAuthResult.success("GWN-REF-1", true, "OK", 50));
+
+        GuestLoginRequest loginRequest = new GuestLoginRequest();
+        loginRequest.setLocationSlug("nvh-cat-ba");
+        loginRequest.setMacAddress("11:22:33:44:55:66");
+        loginRequest.setConsentGiven(true);
+
+        var resp = portalService.authenticateGuest(loginRequest, new MockHttpServletRequest());
+        assertNotNull(resp);
+        assertEquals(com.wificaptive.sessions.entity.SessionStatus.AUTHORIZED, resp.getStatus());
     }
 }
