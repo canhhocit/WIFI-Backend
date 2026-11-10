@@ -60,6 +60,11 @@ app:
       app-secret: ${GWN_CLOUD_APP_SECRET:}
       network-id: ${GWN_CLOUD_NETWORK_ID:}
       device-mac: ${GWN_CLOUD_DEVICE_MAC:EC74D798B042}
+    radius:
+      enabled: ${RADIUS_ENABLED:true}
+      port: ${RADIUS_PORT:1812}
+      acct-port: ${RADIUS_ACCT_PORT:1813}
+      shared-secret: ${RADIUS_SHARED_SECRET:HaiPhongSecret@2026}
 
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173}
