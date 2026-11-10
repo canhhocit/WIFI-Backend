@@ -404,13 +404,22 @@ public class PortalService {
     private boolean isInfrastructureDeviceMac(String mac) {
         if (!StringUtils.hasText(mac) || networkDeviceRepository == null) return false;
         String clean = mac.replaceAll("[^a-fA-F0-9]", "").toLowerCase();
+        if (clean.length() == 12) {
+            char secondHex = clean.charAt(1);
+            // IEEE 802 U/L bit check: Private / Randomized MAC addresses (iOS, Android, Windows) have bit 1 set (2, 6, a, e)
+            if (secondHex == '2' || secondHex == '6' || secondHex == 'a' || secondHex == 'e') {
+                return false;
+            }
+        }
         try {
-            return networkDeviceRepository.findAll().stream().anyMatch(dev -> {
-                String devClean = (dev.getMacAddress() != null)
-                        ? dev.getMacAddress().replaceAll("[^a-fA-F0-9]", "").toLowerCase()
-                        : "";
-                return !devClean.isEmpty() && clean.equals(devClean);
-            });
+            return networkDeviceRepository.findAll().stream()
+                    .filter(dev -> "ROUTER".equalsIgnoreCase(dev.getDeviceType()) || "GATEWAY".equalsIgnoreCase(dev.getDeviceType()) || "SWITCH".equalsIgnoreCase(dev.getDeviceType()))
+                    .anyMatch(dev -> {
+                        String devClean = (dev.getMacAddress() != null)
+                                ? dev.getMacAddress().replaceAll("[^a-fA-F0-9]", "").toLowerCase()
+                                : "";
+                        return !devClean.isEmpty() && clean.equals(devClean);
+                    });
         } catch (Exception e) {
             return false;
         }
