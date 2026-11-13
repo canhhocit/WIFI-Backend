@@ -33,7 +33,8 @@ USER appuser
 # Expose backend API and RADIUS ports
 EXPOSE 8080 1812/udp 1813/udp
 
-# Production JVM flags optimized for container memory constraints
+# Explicitly enforce port 8080 inside container for Nginx / Kubernetes
+ENV SERVER_PORT=8080
 ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+UseG1GC -Djava.security.egd=file:/dev/./urandom"
 
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
