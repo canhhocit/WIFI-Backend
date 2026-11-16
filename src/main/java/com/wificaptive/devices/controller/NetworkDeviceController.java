@@ -70,4 +70,21 @@ public class NetworkDeviceController {
         NetworkDeviceDto dto = deviceService.rebootDevice(id, auth != null ? auth.getName() : "admin");
         return ResponseEntity.ok(ApiResponse.ok("Lệnh khởi động lại thiết bị đã được phát thành công", dto));
     }
+
+    @GetMapping("/{id}/clients")
+    public ResponseEntity<ApiResponse<List<com.wificaptive.gateway.dto.GwnClientDto>>> getConnectedClients(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.ok(deviceService.getConnectedClients(id)));
+    }
+
+    
+    @PostMapping("/upgrade-firmware")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<com.wificaptive.gateway.dto.GwnUpgradeResult>> upgradeFirmware(
+            @RequestBody UpgradeFirmwareRequest req,
+            Authentication auth) {
+        com.wificaptive.gateway.dto.GwnUpgradeResult res = deviceService.upgradeFirmware(req.deviceIds(), req.targetFirmware(), auth != null ? auth.getName() : "admin");
+        return ResponseEntity.ok(ApiResponse.ok(res.message(), res));
+    }
+
+    public record UpgradeFirmwareRequest(List<Long> deviceIds, String targetFirmware) {}
 }

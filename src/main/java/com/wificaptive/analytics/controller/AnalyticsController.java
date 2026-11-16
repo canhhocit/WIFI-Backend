@@ -1,5 +1,6 @@
 package com.wificaptive.analytics.controller;
 
+import com.wificaptive.analytics.dto.AuthFunnelStepDto;
 import com.wificaptive.analytics.dto.DashboardOverviewDto;
 import com.wificaptive.analytics.dto.HourlyTrendDto;
 import com.wificaptive.analytics.service.AnalyticsService;
@@ -28,5 +29,10 @@ public class AnalyticsController {
     @GetMapping("/trends")
     public ApiResponse<List<HourlyTrendDto>> getHourlyTrends() {
         return ApiResponse.ok(analyticsService.getHourlyTrends());
+    }
+
+    @GetMapping("/funnel")
+    public ApiResponse<List<AuthFunnelStepDto>> getAuthenticationFunnel() {
+        return ApiResponse.ok(analyticsService.getAuthenticationFunnel());
     }
 }

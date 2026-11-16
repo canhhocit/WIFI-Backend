@@ -17,9 +17,13 @@ import java.nio.charset.StandardCharsets;
 public class GovernmentReportController {
 
     private final GovernmentReportService reportService;
+    private final com.wificaptive.reporting.service.GovernmentReportPdfService pdfService;
 
-    public GovernmentReportController(GovernmentReportService reportService) {
+    public GovernmentReportController(
+            GovernmentReportService reportService,
+            com.wificaptive.reporting.service.GovernmentReportPdfService pdfService) {
         this.reportService = reportService;
+        this.pdfService = pdfService;
     }
 
     @GetMapping("/summary")
@@ -41,6 +45,22 @@ public class GovernmentReportController {
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"Bao_cao_UBND_So_TTTT_Hai_Phong.csv\"")
                 .contentType(MediaType.parseMediaType("text/csv; charset=UTF-8"))
                 .body(csvBytes);
+    }
+
+    /**
+     * Xuất báo cáo định dạng PDF chính thức phục vụ báo cáo UBND TP & Sở TTTT.
+     */
+    @GetMapping("/export/pdf")
+    public ResponseEntity<byte[]> exportGovernmentPdf(
+            @RequestParam(defaultValue = "MONTH") String period
+    ) {
+        GovernmentReportDto report = reportService.generateReport(period);
+        byte[] pdfBytes = pdfService.generatePdfReport(report);
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"Bao_cao_UBND_Hai_Phong_Chinh_Thuc.pdf\"")
+                .contentType(MediaType.APPLICATION_PDF)
+                .body(pdfBytes);
     }
 }
 

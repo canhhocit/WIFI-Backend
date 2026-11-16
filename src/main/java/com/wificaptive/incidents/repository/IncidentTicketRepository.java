@@ -18,6 +18,8 @@ public interface IncidentTicketRepository extends JpaRepository<IncidentTicket, 
 
     List<IncidentTicket> findByLocationId(Long locationId);
 
+    List<IncidentTicket> findByLocationIdAndStatusIn(Long locationId, List<String> statuses);
+
     long countByStatus(String status);
 }
 

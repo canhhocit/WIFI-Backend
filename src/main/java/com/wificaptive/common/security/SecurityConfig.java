@@ -57,6 +57,8 @@ public class SecurityConfig {
                         .requestMatchers("/h2-console/**").permitAll()
                         // Pre-flight CORS OPTIONS requests
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        // Public Excel Template Download
+                        .requestMatchers("/api/admin/locations/import/template").permitAll()
                         // Admin Protected Endpoints
                         .requestMatchers("/api/admin/**", "/api/v1/admin/**", "/v1/admin/**", "/api/auth/me").authenticated()
                         .anyRequest().authenticated()

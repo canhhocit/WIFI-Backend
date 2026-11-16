@@ -56,5 +56,14 @@ public class IncidentController {
         String actor = auth != null ? auth.getName() : "technician";
         return ApiResponse.ok("Xác nhận giải quyết sự cố thành công", ticketService.resolveTicket(id, req, actor));
     }
+
+    @GetMapping("/citizen-reports")
+    public ApiResponse<PageResponse<CitizenReportDto>> getCitizenReports(
+            @RequestParam(required = false) Long locationId,
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "15") int size) {
+        return ApiResponse.ok(ticketService.getCitizenReports(locationId, status, page, size));
+    }
 }
 

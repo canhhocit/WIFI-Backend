@@ -2,6 +2,7 @@ package com.wificaptive.devices.scheduler;
 
 import com.wificaptive.devices.dto.DeviceSyncSummaryDto;
 import com.wificaptive.devices.service.NetworkDeviceService;
+import com.wificaptive.incidents.service.IncidentTicketService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -15,9 +16,11 @@ public class DeviceSyncScheduler {
     private static final Logger log = LoggerFactory.getLogger(DeviceSyncScheduler.class);
 
     private final NetworkDeviceService deviceService;
+    private final IncidentTicketService incidentTicketService;
 
-    public DeviceSyncScheduler(NetworkDeviceService deviceService) {
+    public DeviceSyncScheduler(NetworkDeviceService deviceService, IncidentTicketService incidentTicketService) {
         this.deviceService = deviceService;
+        this.incidentTicketService = incidentTicketService;
     }
 
     /**
@@ -31,6 +34,11 @@ public class DeviceSyncScheduler {
             DeviceSyncSummaryDto summary = deviceService.syncFromGrandstream("scheduler");
             log.info("[DeviceSyncScheduler] Background sync completed: {} devices synced, {} updated, {} created",
                     summary.getSyncedCount(), summary.getUpdatedCount(), summary.getCreatedCount());
+
+            int autoClosed = incidentTicketService.autoResolveRecoveredIncidents();
+            if (autoClosed > 0) {
+                log.info("Tự động đóng {} phiếu sự cố do thiết bị đã khôi phục kết nối ONLINE thành công", autoClosed);
+            }
         } catch (Exception e) {
             log.warn("[DeviceSyncScheduler] Background sync encountered an issue: {}", e.getMessage());
         }

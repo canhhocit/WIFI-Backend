@@ -7,6 +7,8 @@ import com.wificaptive.gateway.dto.GatewayRevokeResult;
 import com.wificaptive.gateway.dto.GatewayStatusDto;
 import com.wificaptive.gateway.dto.GwnDeviceSyncDto;
 import com.wificaptive.gateway.dto.GwnRebootResult;
+import com.wificaptive.gateway.dto.GwnClientDto;
+import com.wificaptive.gateway.dto.GwnUpgradeResult;
 import com.wificaptive.gateway.dto.MockGatewayConfigDto;
 import com.wificaptive.gateway.entity.GatewayTransaction;
 import com.wificaptive.gateway.repository.GatewayTransactionRepository;
@@ -482,6 +484,107 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
             long latencyMs = System.currentTimeMillis() - startTime;
             log.error("[GWN Cloud Gateway] Exception sending reboot command: {}", e.getMessage(), e);
             return GwnRebootResult.failure("Lỗi kết nối tới Grandstream Cloud khi phát lệnh reboot: " + e.getMessage(), formattedMac, false, latencyMs);
+        }
+    }
+
+    
+    public List<com.wificaptive.gateway.dto.GwnClientDto> getConnectedClientsFromCloud(String apMacFilter) {
+        if (!isLiveCredentialsConfigured()) {
+            // Giả lập danh sách client thực địa tại trạm NVH
+            return List.of(
+                    new com.wificaptive.gateway.dto.GwnClientDto("70:F1:A1:22:33:44", "192.168.80.101", "iPhone-14-Pro", "WiFi Cong Cong Hai Phong", "EC:74:D7:98:B0:42", "GWN7002 Gateway", "5GHz", -58, 14502000L, 85400000L, 3420L),
+                    new com.wificaptive.gateway.dto.GwnClientDto("8C:85:90:55:66:77", "192.168.80.102", "Galaxy-S23", "WiFi Cong Cong Hai Phong", "EC:74:D7:98:B0:42", "GWN7002 Gateway", "5GHz", -64, 8200100L, 42100000L, 1850L),
+                    new com.wificaptive.gateway.dto.GwnClientDto("B4:2E:99:88:99:AA", "192.168.80.103", "Xiaomi-Redmi-Note", "WiFi Cong Cong Hai Phong", "EC:74:D7:98:B0:42", "GWN7002 Gateway", "2.4GHz", -72, 3400000L, 12500000L, 950L)
+            );
+        }
+
+        try {
+            Map<String, Object> payload = new HashMap<>();
+            if (StringUtils.hasText(networkId)) {
+                try {
+                    payload.put("networkId", Long.parseLong(networkId.trim()));
+                } catch (NumberFormatException ignored) {}
+            }
+            if (StringUtils.hasText(apMacFilter)) {
+                payload.put("apMac", cleanMacAddress(apMacFilter));
+            }
+            payload.put("pageNum", 1);
+            payload.put("pageSize", 100);
+
+            GwnApiResponse response = executeGwnApi("v1.0.0/client/list", payload);
+            List<com.wificaptive.gateway.dto.GwnClientDto> clients = new ArrayList<>();
+
+            if (response.httpStatus >= 200 && response.httpStatus < 300 && response.retCode == 0) {
+                JsonNode root = objectMapper.readTree(response.rawBody);
+                JsonNode items = root.path("data").isArray() ? root.path("data") : root.path("data").path("list");
+                if (items.isArray()) {
+                    for (JsonNode item : items) {
+                        String mac = formatMacAddress(item.path("mac").asText(""));
+                        String ip = item.path("ip").asText("");
+                        String host = item.path("hostname").asText("Client");
+                        String ssid = item.path("ssid").asText("WiFi Cong Cong Hai Phong");
+                        String apMac = formatMacAddress(item.path("apMac").asText(""));
+                        String apName = item.path("apName").asText("GWN AP");
+                        String band = item.path("radio").asInt(1) == 2 ? "5GHz" : "2.4GHz";
+                        int rssi = item.path("rssi").asInt(-65);
+                        long rx = item.path("rxBytes").asLong(0L);
+                        long tx = item.path("txBytes").asLong(0L);
+                        long time = item.path("connectTime").asLong(1200L);
+                        clients.add(new com.wificaptive.gateway.dto.GwnClientDto(mac, ip, host, ssid, apMac, apName, band, rssi, rx, tx, time));
+                    }
+                }
+            }
+            return clients;
+        } catch (Exception e) {
+            log.error("[GWN Cloud Gateway] Lỗi tải client từ cloud: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    public GwnUpgradeResult upgradeFirmwareOnCloud(List<String> macList, String targetFirmware) {
+        long startTime = System.currentTimeMillis();
+        List<String> formatted = macList.stream().map(this::formatMacAddress).toList();
+
+        if (!isLiveCredentialsConfigured()) {
+            long elapsed = System.currentTimeMillis() - startTime;
+            log.info("[GWN Cloud Gateway] Firmware upgrade dispatched (STANDBY): target={} for {} devices", targetFirmware, formatted.size());
+            return GwnUpgradeResult.success("Đã phát lệnh nâng cấp Firmware " + targetFirmware + " cho " + formatted.size() + " thiết bị (Standby)", formatted, targetFirmware, elapsed);
+        }
+
+        try {
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("taskName", "FIRMWARE_UPGRADE_" + targetFirmware);
+            payload.put("taskType", 2); // 2: Upgrade
+            payload.put("macList", formatted);
+            payload.put("version", targetFirmware);
+            payload.put("execType", 1); // 1: Execute now
+
+            GwnApiResponse response = executeGwnApi("v1.0.0/task/add", payload);
+            long elapsed = System.currentTimeMillis() - startTime;
+
+            if (response.httpStatus >= 200 && response.httpStatus < 300 && response.retCode == 0) {
+                return GwnUpgradeResult.success("Đã tạo task nâng cấp firmware thành công trên Grandstream Cloud", formatted, targetFirmware, elapsed);
+            } else {
+                return GwnUpgradeResult.failure("Grandstream Cloud từ chối nâng cấp firmware: " + response.msg, targetFirmware, elapsed);
+            }
+        } catch (Exception e) {
+            long elapsed = System.currentTimeMillis() - startTime;
+            return GwnUpgradeResult.failure("Lỗi gọi API nâng cấp firmware: " + e.getMessage(), targetFirmware, elapsed);
+        }
+    }
+
+    public boolean blockMacAtHardwareLevel(String macAddress) {
+        String formatted = formatMacAddress(macAddress);
+        try {
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("mac", formatted);
+            payload.put("action", "block");
+            GwnApiResponse response = executeGwnApi("v1.0.0/client/block", payload);
+            log.info("[GWN Cloud Gateway] Blocked MAC {} at hardware router level: status={}", formatted, response.httpStatus);
+            return response.httpStatus >= 200 && response.httpStatus < 300;
+        } catch (Exception e) {
+            log.warn("[GWN Cloud Gateway] Hardware block fallback for MAC {}: {}", formatted, e.getMessage());
+            return false;
         }
     }
 

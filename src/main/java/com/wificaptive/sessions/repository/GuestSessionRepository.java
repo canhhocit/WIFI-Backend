@@ -73,4 +73,13 @@ public interface GuestSessionRepository extends JpaRepository<GuestSession, Long
 
     @Query("SELECT s.status, COUNT(s) FROM GuestSession s GROUP BY s.status")
     List<Object[]> countSessionsByStatusGroup();
+
+    @Query("SELECT COUNT(s) FROM GuestSession s WHERE s.status <> com.wificaptive.sessions.entity.SessionStatus.PENDING")
+    long countSessionsNotPending();
+
+    @Query("SELECT COUNT(s) FROM GuestSession s WHERE s.status IN (com.wificaptive.sessions.entity.SessionStatus.AUTHORIZED, com.wificaptive.sessions.entity.SessionStatus.EXPIRED, com.wificaptive.sessions.entity.SessionStatus.REVOKED, com.wificaptive.sessions.entity.SessionStatus.FAILED)")
+    long countSessionsWithOtp();
+
+    @Query("SELECT COUNT(s) FROM GuestSession s WHERE s.status IN (com.wificaptive.sessions.entity.SessionStatus.AUTHORIZED, com.wificaptive.sessions.entity.SessionStatus.EXPIRED, com.wificaptive.sessions.entity.SessionStatus.REVOKED)")
+    long countSessionsAuthenticated();
 }

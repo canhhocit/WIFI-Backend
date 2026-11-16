@@ -1,6 +1,7 @@
 package com.wificaptive.authentication.controller;
 
 import com.wificaptive.authentication.dto.AdminUserDto;
+import com.wificaptive.authentication.dto.ChangePasswordRequest;
 import com.wificaptive.authentication.dto.LoginRequest;
 import com.wificaptive.authentication.dto.LoginResponse;
 import com.wificaptive.authentication.service.AuthService;
@@ -31,5 +32,14 @@ public class AuthController {
     public ApiResponse<AdminUserDto> getCurrentUser(@AuthenticationPrincipal UserPrincipal principal) {
         AdminUserDto user = authService.getCurrentUser(principal);
         return ApiResponse.ok(user);
+    }
+
+    @PostMapping("/change-password")
+    public ApiResponse<Void> changePassword(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @Valid @RequestBody ChangePasswordRequest request,
+            HttpServletRequest httpRequest) {
+        authService.changePassword(principal.getId(), request, httpRequest);
+        return ApiResponse.ok("Đổi mật khẩu thành công", null);
     }
 }

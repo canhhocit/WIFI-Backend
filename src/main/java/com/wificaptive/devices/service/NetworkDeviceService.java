@@ -254,4 +254,34 @@ public class NetworkDeviceService {
 
         return NetworkDeviceDto.from(saved);
     }
+
+    public List<com.wificaptive.gateway.dto.GwnClientDto> getConnectedClients(Long deviceId) {
+        String apMac = null;
+        if (deviceId != null) {
+            apMac = deviceRepository.findById(deviceId).map(NetworkDevice::getMacAddress).orElse(null);
+        }
+        return gwnCloudGatewayAdapter.getConnectedClientsFromCloud(apMac);
+    }
+
+    public com.wificaptive.gateway.dto.GwnUpgradeResult upgradeFirmware(List<Long> deviceIds, String targetFirmware, String actor) {
+        List<String> macs = deviceRepository.findAllById(deviceIds).stream()
+                .map(NetworkDevice::getMacAddress)
+                .toList();
+        if (macs.isEmpty()) {
+            throw new BadRequestException("Không tìm thấy thiết bị nào hợp lệ để nâng cấp firmware");
+        }
+
+        com.wificaptive.gateway.dto.GwnUpgradeResult result = gwnCloudGatewayAdapter.upgradeFirmwareOnCloud(macs, targetFirmware);
+
+        auditService.recordEvent(
+                AuditAction.DEVICE_REBOOT,
+                actor != null ? actor : "admin",
+                "internal",
+                "NETWORK_DEVICE",
+                "BATCH",
+                "Phát lệnh nâng cấp Firmware " + targetFirmware + " cho " + macs.size() + " thiết bị. Kết quả: " + result.message()
+        );
+
+        return result;
+    }
 }

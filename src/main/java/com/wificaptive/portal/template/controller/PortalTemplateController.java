@@ -31,5 +31,15 @@ public class PortalTemplateController {
     public ApiResponse<PortalTemplateDto> saveTemplate(@RequestBody PortalTemplateDto dto) {
         return ApiResponse.ok("Lưu cấu hình giao diện Cổng chào thành công", service.saveOrUpdate(dto));
     }
+
+    @GetMapping("/{id}/versions")
+    public ApiResponse<List<com.wificaptive.portal.template.dto.PortalTemplateVersionDto>> getVersions(@PathVariable Long id) {
+        return ApiResponse.ok(service.getTemplateVersions(id));
+    }
+
+    @PostMapping("/{id}/rollback/{version}")
+    public ApiResponse<PortalTemplateDto> rollbackVersion(@PathVariable Long id, @PathVariable Integer version) {
+        return ApiResponse.ok("Khôi phục phiên bản v" + version + " thành công", service.rollbackToVersion(id, version));
+    }
 }
 

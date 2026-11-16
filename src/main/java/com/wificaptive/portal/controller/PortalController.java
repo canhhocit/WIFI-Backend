@@ -1,6 +1,9 @@
 package com.wificaptive.portal.controller;
 
 import com.wificaptive.common.dto.ApiResponse;
+import com.wificaptive.incidents.dto.CitizenReportResponse;
+import com.wificaptive.incidents.dto.CreateCitizenReportRequest;
+import com.wificaptive.incidents.service.IncidentTicketService;
 import com.wificaptive.portal.dto.GuestLoginRequest;
 import com.wificaptive.portal.dto.GuestLoginResponse;
 import com.wificaptive.portal.dto.GuestSessionStatusResponse;
@@ -16,9 +19,11 @@ import org.springframework.web.bind.annotation.*;
 public class PortalController {
 
     private final PortalService portalService;
+    private final IncidentTicketService incidentTicketService;
 
-    public PortalController(PortalService portalService) {
+    public PortalController(PortalService portalService, IncidentTicketService incidentTicketService) {
         this.portalService = portalService;
+        this.incidentTicketService = incidentTicketService;
     }
 
     @GetMapping("/init")
@@ -52,5 +57,22 @@ public class PortalController {
     public ApiResponse<GuestSessionStatusResponse> disconnectSession(@PathVariable String token) {
         GuestSessionStatusResponse response = portalService.disconnectGuestSession(token);
         return ApiResponse.ok("Session disconnected", response);
+    }
+
+    /**
+     * Báo lỗi WiFi trực tiếp từ Captive Portal (kể cả trước hoặc sau khi đăng nhập).
+     */
+    @PostMapping("/report-issue")
+    public ApiResponse<CitizenReportResponse> reportIssue(
+            @Valid @RequestBody CreateCitizenReportRequest request,
+            HttpServletRequest httpRequest) {
+        String remoteIp = httpRequest.getHeader("X-Forwarded-For");
+        if (remoteIp == null || remoteIp.isBlank()) {
+            remoteIp = httpRequest.getRemoteAddr();
+        } else if (remoteIp.contains(",")) {
+            remoteIp = remoteIp.split(",")[0].trim();
+        }
+        CitizenReportResponse response = incidentTicketService.recordCitizenReport(request, remoteIp);
+        return ApiResponse.ok(response.getMessage(), response);
     }
 }

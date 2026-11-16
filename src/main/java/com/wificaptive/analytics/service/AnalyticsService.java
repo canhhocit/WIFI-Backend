@@ -1,5 +1,6 @@
 package com.wificaptive.analytics.service;
 
+import com.wificaptive.analytics.dto.AuthFunnelStepDto;
 import com.wificaptive.analytics.dto.DashboardOverviewDto;
 import com.wificaptive.analytics.dto.DeviceTopologySummaryDto;
 import com.wificaptive.analytics.dto.HourlyTrendDto;
@@ -141,5 +142,38 @@ public class AnalyticsService {
         }
 
         return trends;
+    }
+
+    @Transactional(readOnly = true)
+    public List<AuthFunnelStepDto> getAuthenticationFunnel() {
+        Instant now = Instant.now();
+
+        long step1 = sessionRepository.count();
+        long step2 = sessionRepository.countSessionsNotPending();
+        long step3 = sessionRepository.countSessionsWithOtp();
+        long step4 = sessionRepository.countSessionsAuthenticated();
+        long step5 = sessionRepository.countActiveSessions(now);
+
+        long[] counts = {step1, step2, step3, step4, step5};
+        String[] names = {
+            "Tiếp cận Portal",
+            "Đồng ý điều khoản",
+            "Nhập SĐT/OTP",
+            "Xác thực thành công",
+            "Đang hoạt động"
+        };
+
+        List<AuthFunnelStepDto> result = new ArrayList<>();
+        for (int i = 0; i < 5; i++) {
+            double retentionPct = step1 > 0
+                    ? Math.round((double) counts[i] / step1 * 100.0 * 10.0) / 10.0
+                    : 0.0;
+            double dropPct = 0.0;
+            if (i > 0 && counts[i - 1] > 0) {
+                dropPct = Math.round((double) (counts[i - 1] - counts[i]) / counts[i - 1] * 100.0 * 10.0) / 10.0;
+            }
+            result.add(new AuthFunnelStepDto(i + 1, names[i], counts[i], retentionPct, dropPct));
+        }
+        return result;
     }
 }
