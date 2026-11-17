@@ -6,13 +6,19 @@ import com.wificaptive.incidents.repository.IncidentTicketRepository;
 import com.wificaptive.locations.repository.WifiLocationRepository;
 import com.wificaptive.reporting.dto.DistrictStatDto;
 import com.wificaptive.reporting.dto.GovernmentReportDto;
+import com.wificaptive.reporting.dto.GovernmentReportHistoryDto;
+import com.wificaptive.reporting.dto.SubmitReportRequest;
+import com.wificaptive.reporting.entity.GovernmentReportHistory;
+import com.wificaptive.reporting.repository.GovernmentReportHistoryRepository;
 import com.wificaptive.sessions.repository.GuestSessionRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional(readOnly = true)
@@ -22,16 +28,28 @@ public class GovernmentReportService {
     private final GuestSessionRepository sessionRepository;
     private final IncidentTicketRepository incidentRepository;
     private final AdministrativeUnitRepository adminUnitRepository;
+    private final GovernmentReportHistoryRepository historyRepository;
 
     public GovernmentReportService(
             WifiLocationRepository locationRepository,
             GuestSessionRepository sessionRepository,
             IncidentTicketRepository incidentRepository,
             AdministrativeUnitRepository adminUnitRepository) {
+        this(locationRepository, sessionRepository, incidentRepository, adminUnitRepository, null);
+    }
+
+    @Autowired
+    public GovernmentReportService(
+            WifiLocationRepository locationRepository,
+            GuestSessionRepository sessionRepository,
+            IncidentTicketRepository incidentRepository,
+            AdministrativeUnitRepository adminUnitRepository,
+            GovernmentReportHistoryRepository historyRepository) {
         this.locationRepository = locationRepository;
         this.sessionRepository = sessionRepository;
         this.incidentRepository = incidentRepository;
         this.adminUnitRepository = adminUnitRepository;
+        this.historyRepository = historyRepository;
     }
 
     public GovernmentReportDto generateReport(String period) {
@@ -112,6 +130,71 @@ public class GovernmentReportService {
                 Math.round(slaCompliance * 10.0) / 10.0,
                 2.4, // MTTR average 2.4 hours
                 districtStats
+        );
+    }
+
+    public List<GovernmentReportHistoryDto> getReportHistory() {
+        return historyRepository.findAllByOrderBySubmittedAtDesc()
+                .stream()
+                .map(this::toDto)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public GovernmentReportHistoryDto submitReport(SubmitReportRequest req, String username) {
+        GovernmentReportDto current = generateReport(req.getPeriod());
+
+        String periodLabel = switch (req.getPeriod().toUpperCase()) {
+            case "MONTH" -> "Tháng " + (Instant.now().atZone(java.time.ZoneId.of("Asia/Ho_Chi_Minh")).getMonthValue()) + "/2026";
+            case "PREV_MONTH" -> "Tháng trước";
+            case "QUARTER" -> "Quý 3/2026";
+            case "YEAR" -> "Năm 2026";
+            default -> req.getPeriod();
+        };
+
+        String reportCode = "BC-HP-" + System.currentTimeMillis() % 1000000;
+        String title = "Báo cáo vận hành Wi-Fi 1.584 Nhà văn hóa (" + periodLabel + ")";
+
+        GovernmentReportHistory entity = new GovernmentReportHistory();
+        entity.setReportCode(reportCode);
+        entity.setTitle(title);
+        entity.setPeriod(req.getPeriod().toUpperCase());
+        entity.setTotalLocations(current.totalTargetLocations());
+        entity.setOnlineLocations(current.activeLocations());
+        entity.setSlaPercentage(current.telecomSlaComplianceRate());
+        entity.setTotalSessions(current.totalCitizenSessions());
+        entity.setTotalDataGb(current.totalDataServedTb() * 1024.0);
+        entity.setExportFormat(req.getExportFormat() != null ? req.getExportFormat().toUpperCase() : "PDF");
+        entity.setStatus("SUBMITTED");
+        entity.setSubmittedBy(username != null ? username : "sotttt@haiphong.gov.vn");
+        entity.setSubmittedAt(Instant.now());
+        entity.setRecipientAgency(req.getRecipientAgency() != null && !req.getRecipientAgency().isBlank()
+                ? req.getRecipientAgency()
+                : "UBND TP Hải Phòng & Sở TT&TT");
+        entity.setNotes(req.getNotes());
+
+        GovernmentReportHistory saved = historyRepository.save(entity);
+        return toDto(saved);
+    }
+
+    private GovernmentReportHistoryDto toDto(GovernmentReportHistory e) {
+        return new GovernmentReportHistoryDto(
+                e.getId(),
+                e.getReportCode(),
+                e.getTitle(),
+                e.getPeriod(),
+                e.getTotalLocations(),
+                e.getOnlineLocations(),
+                e.getSlaPercentage(),
+                e.getTotalSessions(),
+                e.getTotalDataGb(),
+                e.getExportFormat(),
+                e.getStatus(),
+                e.getSubmittedBy(),
+                e.getSubmittedAt(),
+                e.getRecipientAgency(),
+                e.getNotes(),
+                e.getCreatedAt()
         );
     }
 
