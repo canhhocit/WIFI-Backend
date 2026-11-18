@@ -338,8 +338,3 @@ mvn test
   - `AuditServiceTest`: Kiểm thử ghi nhận nhật ký kiểm toán bất biến, lọc hành động mở chặn `DEVICE_UNBLOCK` và xử lý alias linh hoạt.
   - `PortalServiceTest` & `GuestSessionServiceTest`: Kiểm thử máy trạng thái phiên, ngắt kết nối gateway và tự động chốt sổ bảo lưu 12 tháng.
   - `MacBlacklistServiceTest` & `DnsDomainRuleServiceTest`: Kiểm thử các chính sách an ninh mạng.
-
----
-
-## 📄 Bản Quyền & Chuyển Giao Công Nghệ
-Hệ thống được thiết kế, phát triển và chuyển giao phục vụ công tác Chuyển đổi số của **Ủy Ban Nhân Dân Thành Phố Hải Phòng**. Toàn quyền sở hữu thuộc về UBND TP Hải Phòng và Sở Thông tin & Truyền thông Hải Phòng.
