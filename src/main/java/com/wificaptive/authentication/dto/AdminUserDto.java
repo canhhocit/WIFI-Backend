@@ -18,6 +18,7 @@ public class AdminUserDto {
     private int failedLoginAttempts;
     private Instant lockedUntil;
     private boolean locked;
+    private boolean mustChangePassword;
     private Instant createdAt;
 
     public AdminUserDto() {
@@ -36,6 +37,7 @@ public class AdminUserDto {
         dto.setFailedLoginAttempts(user.getFailedLoginAttempts());
         dto.setLockedUntil(user.getLockedUntil());
         dto.setLocked(user.getLockedUntil() != null && user.getLockedUntil().isAfter(Instant.now()));
+        dto.setMustChangePassword(user.isMustChangePassword());
         dto.setCreatedAt(user.getCreatedAt());
         return dto;
     }
@@ -142,5 +144,13 @@ public class AdminUserDto {
 
     public void setCreatedAt(Instant createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public boolean isMustChangePassword() {
+        return mustChangePassword;
+    }
+
+    public void setMustChangePassword(boolean mustChangePassword) {
+        this.mustChangePassword = mustChangePassword;
     }
 }

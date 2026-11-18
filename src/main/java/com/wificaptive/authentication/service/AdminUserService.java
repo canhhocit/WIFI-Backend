@@ -73,6 +73,7 @@ public class AdminUserService {
         user.setAdminUnitId(request.getAdminUnitId());
         user.setPhoneNumber(request.getPhoneNumber());
         user.setEnabled(true);
+        user.setMustChangePassword(true);
 
         AdminUser saved = adminUserRepository.save(user);
 
@@ -110,6 +111,7 @@ public class AdminUserService {
 
         if (request.getNewPassword() != null && !request.getNewPassword().trim().isEmpty()) {
             user.setPasswordHash(passwordEncoder.encode(request.getNewPassword().trim()));
+            user.setMustChangePassword(true);
         }
 
         AdminUser updated = adminUserRepository.save(user);

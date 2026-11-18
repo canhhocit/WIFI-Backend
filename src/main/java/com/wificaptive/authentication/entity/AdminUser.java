@@ -39,6 +39,9 @@ public class AdminUser extends BaseEntity {
     @Column(name = "locked_until")
     private Instant lockedUntil;
 
+    @Column(name = "must_change_password", nullable = false)
+    private boolean mustChangePassword = false;
+
     public AdminUser() {
     }
 
@@ -133,5 +136,13 @@ public class AdminUser extends BaseEntity {
 
     public void setLockedUntil(Instant lockedUntil) {
         this.lockedUntil = lockedUntil;
+    }
+
+    public boolean isMustChangePassword() {
+        return mustChangePassword;
+    }
+
+    public void setMustChangePassword(boolean mustChangePassword) {
+        this.mustChangePassword = mustChangePassword;
     }
 }

@@ -68,6 +68,10 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
     private volatile String cachedToken = null;
     private volatile Instant tokenExpiresAt = Instant.MIN;
 
+    // Emergency Portal Bypass (Fail-Open) flag: Cho phép bỏ qua cổng chào khi có sự cố
+    private volatile boolean emergencyPortalBypassActive = false;
+    private volatile String emergencyBypassReason = null;
+
     private final AtomicLong totalAuthorizations = new AtomicLong(0);
     private final AtomicLong totalRevocations = new AtomicLong(0);
     private final AtomicLong failedOperations = new AtomicLong(0);
@@ -211,12 +215,52 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
         dto.setTotalRevocations(totalRevocations.get());
         dto.setFailedOperations(failedOperations.get());
 
-        if (isLiveCredentialsConfigured()) {
+        if (emergencyPortalBypassActive) {
+            dto.setStatusMessage("⚠️ [CHẾ ĐỘ CỨU HỘ KHẨN CẤP] Bỏ qua Cổng chào (Portal Bypass / Fail-Open) đang BẬT. Lý do: " +
+                    (emergencyBypassReason != null ? emergencyBypassReason : "Sự cố mạng diện rộng") +
+                    ". Toàn bộ người dân truy cập thẳng Internet.");
+        } else if (isLiveCredentialsConfigured()) {
             dto.setStatusMessage("Đã cấu hình xác thực GWN Cloud (" + gwnBaseUrl + "). Sẵn sàng kích hoạt lệnh phần cứng trên router GWN7002.");
         } else {
             dto.setStatusMessage("Chế độ Sẵn sàng kết nối Grandstream GWN7002. Cần cấu hình App ID & Secret Key để đồng bộ thực tế.");
         }
         return dto;
+    }
+
+    /**
+     * Bật / Tắt chế độ Bỏ qua Cổng chào khẩn cấp (Emergency Captive Portal Bypass / Fail-Open).
+     * Khi kích hoạt, người dân kết nối Wi-Fi sẽ được vào thẳng mạng Internet mà không bị chặn ở trang Cổng chào.
+     */
+    public boolean setEmergencyPortalBypass(boolean active, String reason) {
+        this.emergencyPortalBypassActive = active;
+        this.emergencyBypassReason = reason;
+
+        log.warn("[GWN Cloud Gateway] Cập nhật chế độ Bỏ qua Cổng chào (Emergency Portal Bypass): active={}, lý do={}", active, reason);
+
+        if (isLiveCredentialsConfigured()) {
+            try {
+                Map<String, Object> payload = new HashMap<>();
+                if (StringUtils.hasText(networkId)) {
+                    try {
+                        payload.put("networkId", Long.parseLong(networkId.trim()));
+                    } catch (NumberFormatException ignored) {}
+                }
+                payload.put("enablePortal", !active);
+                payload.put("portalFailOpen", active);
+
+                GwnApiResponse response = executeGwnApi("v1.0.0/ssid/update", payload);
+                log.info("[GWN Cloud Gateway] Đã phát lệnh cập nhật SSID trên Grandstream Cloud: enablePortal={}, httpStatus={}", !active, response.httpStatus);
+                return response.httpStatus >= 200 && response.httpStatus < 300;
+            } catch (Exception e) {
+                log.error("[GWN Cloud Gateway] Lỗi gửi lệnh cập nhật SSID lên Grandstream Cloud: {}", e.getMessage());
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public boolean isEmergencyPortalBypassActive() {
+        return emergencyPortalBypassActive;
     }
 
     @Override
@@ -451,8 +495,15 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
         }
 
         try {
-            // Official Grandstream GWN Cloud reboot endpoint is POST /oapi/v1.0.0/ap/reboot with {"mac": "..."}
-            Map<String, Object> rebootPayload = Map.of("mac", formattedMac);
+            // Official Grandstream GWN Cloud reboot endpoint is POST /oapi/v1.0.0/ap/reboot with {"macs": ["..."], "networkId": ...}
+            Map<String, Object> rebootPayload = new HashMap<>();
+            rebootPayload.put("macs", List.of(formattedMac));
+            if (StringUtils.hasText(networkId)) {
+                try {
+                    rebootPayload.put("networkId", Long.parseLong(networkId.trim()));
+                } catch (NumberFormatException ignored) {}
+            }
+
             GwnApiResponse response = executeGwnApi("v1.0.0/ap/reboot", rebootPayload);
             long latencyMs = System.currentTimeMillis() - startTime;
 
@@ -461,25 +512,27 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
                 return GwnRebootResult.success("Đã phát lệnh khởi động lại phần cứng cho Router " + formattedMac + " qua Grandstream Cloud", formattedMac, false, latencyMs);
             }
 
-            log.warn("[GWN Cloud Gateway] Direct ap/reboot returned HTTP {}, retCode: {}, msg: {}. Attempting fallback...", response.httpStatus, response.retCode, response.msg);
+            log.warn("[GWN Cloud Gateway] Direct ap/reboot returned HTTP {}, retCode: {}, msg: {}. Attempting fallback with clean MAC...", response.httpStatus, response.retCode, response.msg);
 
-            // Fallback task add if needed
-            Map<String, Object> taskPayload = new HashMap<>();
-            taskPayload.put("taskName", "REBOOT");
-            taskPayload.put("taskType", 1);
-            taskPayload.put("macList", List.of(formattedMac));
-            taskPayload.put("execType", 1);
+            // Fallback: Thử với Clean MAC (không có dấu 2 chấm)
+            String cleanMac = cleanMacAddress(formattedMac);
+            Map<String, Object> cleanPayload = new HashMap<>();
+            cleanPayload.put("macs", List.of(cleanMac));
+            if (StringUtils.hasText(networkId)) {
+                try {
+                    cleanPayload.put("networkId", Long.parseLong(networkId.trim()));
+                } catch (NumberFormatException ignored) {}
+            }
+            GwnApiResponse fallbackResp = executeGwnApi("v1.0.0/ap/reboot", cleanPayload);
+            long fallbackLatency = System.currentTimeMillis() - startTime;
 
-            GwnApiResponse taskResp = executeGwnApi("v1.0.0/task/add", taskPayload);
-            long taskLatency = System.currentTimeMillis() - startTime;
-
-            if (taskResp.httpStatus >= 200 && taskResp.httpStatus < 300 && taskResp.retCode == 0) {
-                log.info("[GWN Cloud Gateway] Task reboot succeeded for MAC {}", formattedMac);
-                return GwnRebootResult.success("Khởi động lại Router " + formattedMac + " thành công qua Grandstream Task Engine", formattedMac, false, taskLatency);
+            if (fallbackResp.httpStatus >= 200 && fallbackResp.httpStatus < 300 && fallbackResp.retCode == 0) {
+                log.info("[GWN Cloud Gateway] Reboot command dispatched successfully (Fallback clean MAC) for MAC {} (Latency: {}ms)", cleanMac, fallbackLatency);
+                return GwnRebootResult.success("Đã phát lệnh khởi động lại phần cứng cho Router " + formattedMac + " qua Grandstream Cloud", formattedMac, false, fallbackLatency);
             }
 
             log.warn("[GWN Cloud Gateway] Reboot failed: HTTP {}, retCode: {}, msg: {}", response.httpStatus, response.retCode, response.msg);
-            return GwnRebootResult.failure("Grandstream Cloud từ chối lệnh reboot: " + (StringUtils.hasText(response.msg) ? response.msg : taskResp.msg), formattedMac, false, latencyMs);
+            return GwnRebootResult.failure("Grandstream Cloud từ chối lệnh reboot: " + (StringUtils.hasText(response.msg) ? response.msg : fallbackResp.msg), formattedMac, false, latencyMs);
         } catch (Exception e) {
             long latencyMs = System.currentTimeMillis() - startTime;
             log.error("[GWN Cloud Gateway] Exception sending reboot command: {}", e.getMessage(), e);

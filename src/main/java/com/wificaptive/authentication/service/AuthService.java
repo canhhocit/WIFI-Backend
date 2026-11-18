@@ -93,6 +93,7 @@ public class AuthService {
         }
 
         user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        user.setMustChangePassword(false);
         adminUserRepository.save(user);
 
         String clientIp = extractClientIp(httpRequest);

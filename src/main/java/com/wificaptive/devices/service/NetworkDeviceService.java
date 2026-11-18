@@ -17,6 +17,8 @@ import com.wificaptive.gateway.dto.GwnDeviceSyncDto;
 import com.wificaptive.gateway.dto.GwnRebootResult;
 import com.wificaptive.locations.entity.WifiLocation;
 import com.wificaptive.locations.repository.WifiLocationRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -31,22 +33,27 @@ import java.util.stream.Collectors;
 @Transactional
 public class NetworkDeviceService {
 
+    private static final Logger log = LoggerFactory.getLogger(NetworkDeviceService.class);
+
     private final NetworkDeviceRepository deviceRepository;
     private final DeviceSwapLogRepository swapLogRepository;
     private final WifiLocationRepository locationRepository;
     private final AuditService auditService;
     private final GwnCloudGatewayAdapter gwnCloudGatewayAdapter;
+    private final com.wificaptive.incidents.service.IncidentTicketService incidentTicketService;
 
     public NetworkDeviceService(NetworkDeviceRepository deviceRepository,
                                 DeviceSwapLogRepository swapLogRepository,
                                 WifiLocationRepository locationRepository,
                                 AuditService auditService,
-                                GwnCloudGatewayAdapter gwnCloudGatewayAdapter) {
+                                GwnCloudGatewayAdapter gwnCloudGatewayAdapter,
+                                com.wificaptive.incidents.service.IncidentTicketService incidentTicketService) {
         this.deviceRepository = deviceRepository;
         this.swapLogRepository = swapLogRepository;
         this.locationRepository = locationRepository;
         this.auditService = auditService;
         this.gwnCloudGatewayAdapter = gwnCloudGatewayAdapter;
+        this.incidentTicketService = incidentTicketService;
     }
 
     @Transactional(readOnly = true)
@@ -169,6 +176,7 @@ public class NetworkDeviceService {
                     .orElse(null);
 
             if (dev != null) {
+                String oldStatus = dev.getStatus();
                 dev.setStatus(cDev.getStatus());
                 if (cDev.getIp() != null && !cDev.getIp().isBlank()) {
                     dev.setIpAddress(cDev.getIp());
@@ -195,6 +203,18 @@ public class NetworkDeviceService {
                 NetworkDevice saved = deviceRepository.save(dev);
                 resultList.add(NetworkDeviceDto.from(saved));
                 updatedCount++;
+
+                // Tự động kích hoạt tạo Phiếu sự cố khi thiết bị báo OFFLINE
+                if ("OFFLINE".equalsIgnoreCase(cDev.getStatus())) {
+                    String locName = dev.getLocation() != null ? dev.getLocation().getName() : "Nhà văn hóa";
+                    incidentTicketService.recordDeviceFailureIncident(
+                            dev.getLocation() != null ? dev.getLocation().getId() : null,
+                            dev.getId(),
+                            dev.getModel() + " - " + locName,
+                            dev.getMacAddress(),
+                            "Thiết bị báo mất kết nối (OFFLINE) trong phiên quét định kỳ từ Grandstream GDMS/GWN Cloud"
+                    );
+                }
             } else if (defaultLoc != null) {
                 NetworkDevice newDev = new NetworkDevice();
                 newDev.setLocation(defaultLoc);
@@ -283,5 +303,82 @@ public class NetworkDeviceService {
         );
 
         return result;
+    }
+
+    /**
+     * Xử lý gói tin Webhook cảnh báo từ Grandstream GDMS / GWN Cloud theo thời gian thực
+     */
+    public NetworkDeviceDto processDeviceAlarmWebhook(String rawMac, String eventOrStatus, String alarmType, String message) {
+        if (rawMac == null || rawMac.isBlank()) {
+            throw new BadRequestException("Địa chỉ MAC thiết bị không được để trống trong webhook");
+        }
+        String cleanMac = rawMac.replaceAll("[^A-Fa-f0-9]", "").toUpperCase();
+
+        NetworkDevice dev = deviceRepository.findByMacAddress(rawMac)
+                .or(() -> deviceRepository.findAll().stream()
+                        .filter(d -> d.getMacAddress().replaceAll("[^A-Fa-f0-9]", "").equalsIgnoreCase(cleanMac))
+                        .findFirst())
+                .orElse(null);
+
+        if (dev == null) {
+            log.warn("[GWN Webhook] Nhận cảnh báo cho thiết bị chưa có trong hệ thống: MAC={}, Event={}", rawMac, eventOrStatus);
+            return null;
+        }
+
+        boolean isOffline = "OFFLINE".equalsIgnoreCase(eventOrStatus) ||
+                "DISCONNECTED".equalsIgnoreCase(eventOrStatus) ||
+                "device_offline".equalsIgnoreCase(eventOrStatus) ||
+                (alarmType != null && alarmType.toUpperCase().contains("OFFLINE"));
+
+        boolean isOnline = "ONLINE".equalsIgnoreCase(eventOrStatus) ||
+                "CONNECTED".equalsIgnoreCase(eventOrStatus) ||
+                "device_online".equalsIgnoreCase(eventOrStatus) ||
+                (alarmType != null && alarmType.toUpperCase().contains("ONLINE"));
+
+        if (isOffline) {
+            dev.setStatus("OFFLINE");
+            dev.setLastSeenAt(Instant.now());
+            NetworkDevice saved = deviceRepository.save(dev);
+
+            String locName = dev.getLocation() != null ? dev.getLocation().getName() : "Điểm Wi-Fi";
+            incidentTicketService.recordDeviceFailureIncident(
+                    dev.getLocation() != null ? dev.getLocation().getId() : null,
+                    dev.getId(),
+                    dev.getModel() + " - " + locName,
+                    dev.getMacAddress(),
+                    message != null ? message : ("GDMS Webhook báo sự cố: " + (alarmType != null ? alarmType : "DEVICE_OFFLINE"))
+            );
+
+            auditService.recordEvent(
+                    AuditAction.LOCATION_UPDATE,
+                    "GDMS_WEBHOOK",
+                    "webhook",
+                    "NETWORK_DEVICE",
+                    saved.getId().toString(),
+                    "Phát hiện sự cố phần cứng qua GDMS Cloud Webhook: Thiết bị MAC " + rawMac + " chuyển sang OFFLINE"
+            );
+
+            return NetworkDeviceDto.from(saved);
+        } else if (isOnline) {
+            dev.setStatus("ONLINE");
+            dev.setLastSeenAt(Instant.now());
+            NetworkDevice saved = deviceRepository.save(dev);
+
+            // Tự động khôi phục và đóng phiếu sự cố
+            incidentTicketService.autoResolveRecoveredIncidents();
+
+            auditService.recordEvent(
+                    AuditAction.LOCATION_UPDATE,
+                    "GDMS_WEBHOOK",
+                    "webhook",
+                    "NETWORK_DEVICE",
+                    saved.getId().toString(),
+                    "Thiết bị MAC " + rawMac + " đã khôi phục ONLINE qua GDMS Cloud Webhook"
+            );
+
+            return NetworkDeviceDto.from(saved);
+        }
+
+        return NetworkDeviceDto.from(dev);
     }
 }

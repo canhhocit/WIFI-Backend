@@ -22,11 +22,17 @@ import org.springframework.web.bind.annotation.*;
 public class GatewayAdminController {
 
     private final GatewayAdapter gatewayAdapter;
+    private final com.wificaptive.gateway.adapter.GwnCloudGatewayAdapter gwnCloudGatewayAdapter;
     private final GatewayTransactionRepository transactionRepository;
     private final AuditService auditService;
 
-    public GatewayAdminController(GatewayAdapter gatewayAdapter, GatewayTransactionRepository transactionRepository, AuditService auditService) {
+    public GatewayAdminController(
+            GatewayAdapter gatewayAdapter,
+            com.wificaptive.gateway.adapter.GwnCloudGatewayAdapter gwnCloudGatewayAdapter,
+            GatewayTransactionRepository transactionRepository,
+            AuditService auditService) {
         this.gatewayAdapter = gatewayAdapter;
+        this.gwnCloudGatewayAdapter = gwnCloudGatewayAdapter;
         this.transactionRepository = transactionRepository;
         this.auditService = auditService;
     }
@@ -53,6 +59,28 @@ public class GatewayAdminController {
         );
 
         return ApiResponse.ok("Gateway simulation settings updated", updated);
+    }
+
+    @PostMapping("/portal-bypass")
+    public ApiResponse<GatewayStatusDto> togglePortalBypass(
+            @RequestParam boolean active,
+            @RequestParam(required = false, defaultValue = "Kích hoạt thủ công bởi Quản trị viên") String reason,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        gwnCloudGatewayAdapter.setEmergencyPortalBypass(active, reason);
+
+        auditService.recordEvent(
+                AuditAction.GATEWAY_TOGGLE,
+                principal != null ? principal.getUsername() : "admin",
+                "internal",
+                "GATEWAY",
+                "GWN_CLOUD",
+                String.format("Thay đổi chế độ Bỏ qua Cổng chào (Portal Bypass Fail-Open): active=%s, lý do=%s", active, reason)
+        );
+
+        String msg = active
+                ? "Đã BẬT chế độ Bỏ qua Cổng chào (Fail-Open): Người dân vào thẳng mạng không cần đăng nhập"
+                : "Đã TẮT chế độ Bỏ qua Cổng chào: Khôi phục Cổng chào bình thường";
+        return ApiResponse.ok(msg, gatewayAdapter.getStatus());
     }
 
     @GetMapping("/transactions")

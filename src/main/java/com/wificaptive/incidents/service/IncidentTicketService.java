@@ -336,5 +336,51 @@ public class IncidentTicketService {
             return CitizenReportDto.from(r, locName, code);
         }));
     }
+
+    /**
+     * Tự động tạo phiếu sự cố phần cứng khi thiết bị GWN/Router bị mất kết nối (OFFLINE)
+     * Ngăn chặn tạo phiếu trùng lặp nếu thiết bị hoặc địa điểm này đang có phiếu mở.
+     */
+    @Transactional
+    public IncidentTicketDto recordDeviceFailureIncident(Long locationId, Long deviceId, String deviceName, String macAddress, String reason) {
+        List<String> openStatuses = List.of("NEW", "ASSIGNED", "IN_PROGRESS");
+        if (deviceId != null) {
+            List<IncidentTicket> existing = ticketRepository.findByDeviceIdAndStatusIn(deviceId, openStatuses);
+            if (!existing.isEmpty()) {
+                log.debug("Thiết bị deviceId={} đã có phiếu sự cố đang mở: {}", deviceId, existing.get(0).getTicketCode());
+                return IncidentTicketDto.from(existing.get(0));
+            }
+        } else if (locationId != null) {
+            List<IncidentTicket> existing = ticketRepository.findByLocationIdAndStatusIn(locationId, openStatuses);
+            if (!existing.isEmpty()) {
+                log.debug("Địa điểm locationId={} đã có phiếu sự cố đang mở: {}", locationId, existing.get(0).getTicketCode());
+                return IncidentTicketDto.from(existing.get(0));
+            }
+        }
+
+        String locTitle = "Điểm Wi-Fi";
+        if (locationId != null) {
+            locTitle = locationRepository.findById(locationId).map(WifiLocation::getName).orElse("Điểm #" + locationId);
+        }
+
+        CreateIncidentRequest req = new CreateIncidentRequest();
+        req.setLocationId(locationId);
+        req.setDeviceId(deviceId);
+        req.setIncidentType("HARDWARE_FAULT");
+        req.setSeverity("CRITICAL");
+        req.setSlaHours(4); // Cam kết khôi phục 4 giờ theo chuẩn SLA Sở TT&TT
+        req.setTitle("Sự cố mất kết nối phần cứng GWN: " + (deviceName != null ? deviceName : macAddress));
+        req.setDescription(String.format(
+                "Hệ thống tự động phát hiện thiết bị %s (MAC: %s) tại %s đã chuyển sang trạng thái OFFLINE trên Grandstream GDMS/GWN Cloud. Lý do: %s. Đề nghị kỹ thuật viên kiểm tra nguồn điện và kết nối cáp quang.",
+                deviceName != null ? deviceName : "Grandstream GWN",
+                macAddress != null ? macAddress : "N/A",
+                locTitle,
+                reason != null ? reason : "Mất tín hiệu heartbeat hoặc đứt cáp quang FTTH"
+        ));
+
+        IncidentTicketDto ticket = createTicket(req, "system_gwn_monitor");
+        log.warn("[AUTO INCIDENT] Tự động tạo phiếu sự cố {} cho thiết bị {} tại {}", ticket.getTicketCode(), macAddress, locTitle);
+        return ticket;
+    }
 }
 

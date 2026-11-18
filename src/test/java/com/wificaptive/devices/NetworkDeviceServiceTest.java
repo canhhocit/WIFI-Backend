@@ -46,6 +46,9 @@ class NetworkDeviceServiceTest {
     @Mock
     private GwnCloudGatewayAdapter gwnCloudGatewayAdapter;
 
+    @Mock
+    private com.wificaptive.incidents.service.IncidentTicketService incidentTicketService;
+
     @InjectMocks
     private NetworkDeviceService deviceService;
 
@@ -139,6 +142,49 @@ class NetworkDeviceServiceTest {
 
         assertThat(result).isNotNull();
         assertThat(oldDevice.getStatus()).isEqualTo("REBOOTING");
+        verify(auditService).recordEvent(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void testSyncFromGrandstream_whenDeviceOffline_triggersIncidentTicket() {
+        GwnDeviceSyncDto cloudDev = new GwnDeviceSyncDto(
+                "00:1A:2B:3C:4D:5E",
+                "GWN7002 Cat Ba",
+                "GWN7002",
+                "Grandstream",
+                "192.168.1.50",
+                "OFFLINE",
+                "1.0.9.15",
+                0,
+                0,
+                0L
+        );
+        when(gwnCloudGatewayAdapter.fetchDevicesFromCloud()).thenReturn(List.of(cloudDev));
+        when(deviceRepository.findByMacAddress("00:1A:2B:3C:4D:5E")).thenReturn(Optional.of(oldDevice));
+        when(deviceRepository.save(any(NetworkDevice.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        DeviceSyncSummaryDto summary = deviceService.syncFromGrandstream("scheduler");
+
+        assertThat(summary).isNotNull();
+        assertThat(oldDevice.getStatus()).isEqualTo("OFFLINE");
+        verify(incidentTicketService).recordDeviceFailureIncident(eq(1L), eq(10L), any(), eq("00:1A:2B:3C:4D:5E"), any());
+    }
+
+    @Test
+    void testProcessDeviceAlarmWebhook_triggersIncidentAndUpdatesStatus() {
+        when(deviceRepository.findByMacAddress("00:1A:2B:3C:4D:5E")).thenReturn(Optional.of(oldDevice));
+        when(deviceRepository.save(any(NetworkDevice.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        NetworkDeviceDto result = deviceService.processDeviceAlarmWebhook(
+                "00:1A:2B:3C:4D:5E",
+                "OFFLINE",
+                "DEVICE_OFFLINE",
+                "Cáp quang NVH bị đứt"
+        );
+
+        assertThat(result).isNotNull();
+        assertThat(result.getStatus()).isEqualTo("OFFLINE");
+        verify(incidentTicketService).recordDeviceFailureIncident(eq(1L), eq(10L), any(), eq("00:1A:2B:3C:4D:5E"), any());
         verify(auditService).recordEvent(any(), any(), any(), any(), any(), any());
     }
 }
