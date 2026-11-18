@@ -16,7 +16,7 @@ public interface CampaignRepository extends JpaRepository<Campaign, Long> {
 
     Page<Campaign> findByStatus(String status, Pageable pageable);
 
-    @Query("SELECT c FROM Campaign c WHERE c.status = 'APPROVED' AND :now BETWEEN c.startTime AND c.endTime ORDER BY c.priority DESC")
+    @Query("SELECT c FROM Campaign c WHERE c.status = 'APPROVED' AND :now BETWEEN c.startTime AND c.endTime ORDER BY c.priority ASC, c.createdAt DESC")
     List<Campaign> findActiveApprovedCampaigns(@Param("now") Instant now);
 }
 

@@ -20,6 +20,9 @@ public class Campaign {
     @Column(name = "banner_url")
     private String bannerUrl;
 
+    @Column(name = "gallery_urls", columnDefinition = "TEXT")
+    private String galleryUrls;
+
     @Column(name = "video_url")
     private String videoUrl;
 
@@ -87,6 +90,9 @@ public class Campaign {
 
     public String getBannerUrl() { return bannerUrl; }
     public void setBannerUrl(String bannerUrl) { this.bannerUrl = bannerUrl; }
+
+    public String getGalleryUrls() { return galleryUrls; }
+    public void setGalleryUrls(String galleryUrls) { this.galleryUrls = galleryUrls; }
 
     public String getVideoUrl() { return videoUrl; }
     public void setVideoUrl(String videoUrl) { this.videoUrl = videoUrl; }

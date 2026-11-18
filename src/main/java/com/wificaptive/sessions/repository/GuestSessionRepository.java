@@ -82,4 +82,10 @@ public interface GuestSessionRepository extends JpaRepository<GuestSession, Long
 
     @Query("SELECT COUNT(s) FROM GuestSession s WHERE s.status IN (com.wificaptive.sessions.entity.SessionStatus.AUTHORIZED, com.wificaptive.sessions.entity.SessionStatus.EXPIRED, com.wificaptive.sessions.entity.SessionStatus.REVOKED)")
     long countSessionsAuthenticated();
+
+    @Query("SELECT COALESCE(SUM(s.bytesDownloaded + s.bytesUploaded), 0) FROM GuestSession s")
+    Long sumTotalBytes();
+
+    @Query("SELECT s.location.id, COUNT(s), COALESCE(SUM(s.bytesDownloaded + s.bytesUploaded), 0) FROM GuestSession s WHERE s.location.id IS NOT NULL GROUP BY s.location.id")
+    List<Object[]> sumSessionStatsGroupByLocation();
 }

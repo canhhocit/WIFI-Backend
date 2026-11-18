@@ -46,14 +46,15 @@ class GovernmentReportServiceTest {
 
     @Test
     void testGenerateReport_ReturnsHaiPhongMetrics() {
-        when(locationRepository.countByDeletedFalse()).thenReturn(1584L);
-        when(locationRepository.countByActiveTrueAndDeletedFalse()).thenReturn(1580L);
+        lenient().when(locationRepository.countByDeletedFalse()).thenReturn(1584L);
+        lenient().when(locationRepository.countByActiveTrueAndDeletedFalse()).thenReturn(1580L);
         when(sessionRepository.count()).thenReturn(50000L);
         when(incidentRepository.count()).thenReturn(10L);
         when(incidentRepository.countByStatus("BREACHED")).thenReturn(0L);
 
         AdministrativeUnit district1 = new AdministrativeUnit();
         district1.setId(1L);
+        district1.setCode("HP_HB");
         district1.setName("Quận Hồng Bàng");
         when(adminUnitRepository.findByLevelOrderByCodeAsc(2)).thenReturn(List.of(district1));
 

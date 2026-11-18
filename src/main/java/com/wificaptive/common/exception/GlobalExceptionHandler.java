@@ -111,7 +111,14 @@ public class GlobalExceptionHandler {
         log.warn("Database integrity violation on {}: {}", request.getRequestURI(), ex.getMessage());
         String msg = "Không thể thực hiện thao tác do dữ liệu đang có ràng buộc liên kết trong hệ thống (khóa ngoại hoặc trùng lặp dữ liệu).";
         if (ex.getMessage() != null && ex.getMessage().toLowerCase().contains("foreign key")) {
-            msg = "Dữ liệu này đang được liên kết với các bản ghi khác trong hệ thống (thiết bị mạng, phiên truy cập, hoặc sự cố). Vui lòng kiểm tra lại.";
+            String lower = ex.getMessage().toLowerCase();
+            if (lower.contains("surveys")) {
+                msg = "Dữ liệu này đang được liên kết với Bài khảo sát ý kiến nhân dân. Vui lòng kiểm tra lại.";
+            } else if (lower.contains("campaign")) {
+                msg = "Dữ liệu này đang được liên kết với Chiến dịch truyền thông chính sách số.";
+            } else {
+                msg = "Dữ liệu này đang được liên kết với các bản ghi khác trong hệ thống (thiết bị mạng, phiên truy cập, khảo sát, hoặc sự cố). Vui lòng kiểm tra lại.";
+            }
         }
         ErrorResponse error = new ErrorResponse(
                 HttpStatus.CONFLICT.value(),
@@ -130,7 +137,7 @@ public class GlobalExceptionHandler {
         ErrorResponse error = new ErrorResponse(
                 HttpStatus.BAD_REQUEST.value(),
                 "FILE_SIZE_EXCEEDED",
-                "Kích thước tệp hình ảnh vượt quá giới hạn cho phép (tối đa 15MB). Vui lòng chọn tệp nhỏ hơn.",
+                "Kích thước tệp tải lên vượt quá giới hạn cho phép (tối đa 100MB). Vui lòng chọn tệp nhỏ hơn.",
                 request.getRequestURI()
         );
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);

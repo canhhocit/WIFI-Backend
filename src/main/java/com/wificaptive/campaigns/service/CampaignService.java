@@ -10,6 +10,8 @@ import com.wificaptive.campaigns.repository.CampaignRepository;
 import com.wificaptive.common.dto.PageResponse;
 import com.wificaptive.common.exception.BadRequestException;
 import com.wificaptive.common.exception.ResourceNotFoundException;
+import com.wificaptive.surveys.entity.Survey;
+import com.wificaptive.surveys.repository.SurveyRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
@@ -28,10 +30,14 @@ public class CampaignService {
 
     private final CampaignRepository campaignRepository;
     private final CampaignApprovalRepository approvalRepository;
+    private final SurveyRepository surveyRepository;
 
-    public CampaignService(CampaignRepository campaignRepository, CampaignApprovalRepository approvalRepository) {
+    public CampaignService(CampaignRepository campaignRepository,
+                           CampaignApprovalRepository approvalRepository,
+                           SurveyRepository surveyRepository) {
         this.campaignRepository = campaignRepository;
         this.approvalRepository = approvalRepository;
+        this.surveyRepository = surveyRepository;
     }
 
     @Transactional(readOnly = true)
@@ -62,8 +68,7 @@ public class CampaignService {
         Campaign c = new Campaign();
         c.setTitle(req.getTitle().trim());
         c.setDescription(req.getDescription());
-        c.setBannerUrl(req.getBannerUrl());
-        c.setVideoUrl(req.getVideoUrl());
+        applyMediaAndGallery(c, req);
         c.setActionUrl(req.getActionUrl());
         c.setTargetAdminUnitId(req.getTargetAdminUnitId());
         c.setTargetLocationId(req.getTargetLocationId());
@@ -163,8 +168,7 @@ public class CampaignService {
 
         c.setTitle(req.getTitle().trim());
         c.setDescription(req.getDescription());
-        c.setBannerUrl(req.getBannerUrl());
-        c.setVideoUrl(req.getVideoUrl());
+        applyMediaAndGallery(c, req);
         c.setActionUrl(req.getActionUrl());
         c.setTargetAdminUnitId(req.getTargetAdminUnitId());
         c.setTargetLocationId(req.getTargetLocationId());
@@ -183,7 +187,20 @@ public class CampaignService {
         Campaign c = campaignRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Campaign not found with id: " + id));
 
-        approvalRepository.deleteAll(approvalRepository.findByCampaignIdOrderByCreatedAtDesc(id));
+        // 1. Unlink any surveys associated with this campaign (preserve surveys and responses)
+        List<Survey> linkedSurveys = surveyRepository.findByCampaignId(id);
+        if (linkedSurveys != null && !linkedSurveys.isEmpty()) {
+            for (Survey s : linkedSurveys) {
+                s.setCampaignId(null);
+            }
+            surveyRepository.saveAll(linkedSurveys);
+            log.info("Unlinked {} surveys associated with campaign id {}", linkedSurveys.size(), id);
+        }
+
+        // 2. Delete approval audit records
+        approvalRepository.deleteByCampaignId(id);
+
+        // 3. Delete campaign
         campaignRepository.delete(c);
         log.info("Campaign id {} deleted by {}", id, username);
     }
@@ -192,23 +209,57 @@ public class CampaignService {
     public Campaign getActiveCampaignForLocation(Long locationId, Long adminUnitId) {
         Instant now = Instant.now();
         List<Campaign> approved = campaignRepository.findActiveApprovedCampaigns(now);
+
+        // Step 1: Look for exact location target (highest specificity, ordered by priority ASC: P1 > P2...)
+        if (locationId != null) {
+            for (Campaign c : approved) {
+                if (locationId.equals(c.getTargetLocationId())) {
+                    return c;
+                }
+            }
+        }
+
+        // Step 2: Look for administrative unit target (district/ward level)
+        if (adminUnitId != null) {
+            for (Campaign c : approved) {
+                if (adminUnitId.equals(c.getTargetAdminUnitId()) && c.getTargetLocationId() == null) {
+                    return c;
+                }
+            }
+        }
+
+        // Step 3: City-wide broadcast campaign (targetLocationId == null && targetAdminUnitId == null)
         for (Campaign c : approved) {
-            // Check exact location target
-            if (c.getTargetLocationId() != null && locationId != null) {
-                if (c.getTargetLocationId().equals(locationId)) {
-                    return c;
-                }
-            } else if (c.getTargetAdminUnitId() != null && adminUnitId != null) {
-                // Check admin unit target
-                if (c.getTargetAdminUnitId().equals(adminUnitId)) {
-                    return c;
-                }
-            } else if (c.getTargetLocationId() == null && c.getTargetAdminUnitId() == null) {
-                // City-wide campaign
+            if (c.getTargetLocationId() == null && c.getTargetAdminUnitId() == null) {
                 return c;
             }
         }
+
         return null;
+    }
+
+    private void applyMediaAndGallery(Campaign c, CreateCampaignRequest req) {
+        c.setVideoUrl(req.getVideoUrl());
+
+        List<String> gallery = req.getGalleryUrls();
+        String primaryBanner = req.getBannerUrl();
+
+        if (gallery != null && !gallery.isEmpty()) {
+            if (primaryBanner == null || primaryBanner.isBlank()) {
+                primaryBanner = gallery.get(0);
+            }
+            try {
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                c.setGalleryUrls(mapper.writeValueAsString(gallery));
+            } catch (Exception e) {
+                c.setGalleryUrls(String.join(",", gallery));
+            }
+        } else if (primaryBanner != null && !primaryBanner.isBlank()) {
+            c.setGalleryUrls("[\"" + primaryBanner + "\"]");
+        } else {
+            c.setGalleryUrls(null);
+        }
+        c.setBannerUrl(primaryBanner);
     }
 }
 

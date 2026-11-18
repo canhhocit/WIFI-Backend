@@ -3,6 +3,7 @@ package com.wificaptive.campaigns.dto;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.time.Instant;
+import java.util.List;
 
 public class CreateCampaignRequest {
 
@@ -11,6 +12,7 @@ public class CreateCampaignRequest {
 
     private String description;
     private String bannerUrl;
+    private List<String> galleryUrls;
     private String videoUrl;
     private String actionUrl;
     private Long targetAdminUnitId;
@@ -29,6 +31,8 @@ public class CreateCampaignRequest {
     public void setDescription(String description) { this.description = description; }
     public String getBannerUrl() { return bannerUrl; }
     public void setBannerUrl(String bannerUrl) { this.bannerUrl = bannerUrl; }
+    public List<String> getGalleryUrls() { return galleryUrls; }
+    public void setGalleryUrls(List<String> galleryUrls) { this.galleryUrls = galleryUrls; }
     public String getVideoUrl() { return videoUrl; }
     public void setVideoUrl(String videoUrl) { this.videoUrl = videoUrl; }
     public String getActionUrl() { return actionUrl; }

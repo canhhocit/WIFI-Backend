@@ -2,12 +2,15 @@ package com.wificaptive.campaigns.dto;
 
 import com.wificaptive.campaigns.entity.Campaign;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 
 public class CampaignDto {
     private Long id;
     private String title;
     private String description;
     private String bannerUrl;
+    private List<String> galleryUrls = new ArrayList<>();
     private String videoUrl;
     private String actionUrl;
     private Long targetAdminUnitId;
@@ -43,6 +46,22 @@ public class CampaignDto {
         dto.setRejectReason(c.getRejectReason());
         dto.setCreatedAt(c.getCreatedAt());
         dto.setUpdatedAt(c.getUpdatedAt());
+
+        List<String> list = new ArrayList<>();
+        if (c.getGalleryUrls() != null && !c.getGalleryUrls().isBlank()) {
+            try {
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                list = mapper.readValue(c.getGalleryUrls(), new com.fasterxml.jackson.core.type.TypeReference<List<String>>() {});
+            } catch (Exception e) {
+                for (String part : c.getGalleryUrls().split("[,\\n]")) {
+                    if (!part.trim().isEmpty()) list.add(part.trim());
+                }
+            }
+        }
+        if (list.isEmpty() && c.getBannerUrl() != null && !c.getBannerUrl().isBlank()) {
+            list.add(c.getBannerUrl());
+        }
+        dto.setGalleryUrls(list);
         return dto;
     }
 
@@ -54,6 +73,8 @@ public class CampaignDto {
     public void setDescription(String description) { this.description = description; }
     public String getBannerUrl() { return bannerUrl; }
     public void setBannerUrl(String bannerUrl) { this.bannerUrl = bannerUrl; }
+    public List<String> getGalleryUrls() { return galleryUrls; }
+    public void setGalleryUrls(List<String> galleryUrls) { this.galleryUrls = galleryUrls; }
     public String getVideoUrl() { return videoUrl; }
     public void setVideoUrl(String videoUrl) { this.videoUrl = videoUrl; }
     public String getActionUrl() { return actionUrl; }

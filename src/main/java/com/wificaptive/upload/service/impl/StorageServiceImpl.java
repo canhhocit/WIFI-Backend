@@ -56,9 +56,9 @@ public class StorageServiceImpl implements StorageService {
             throw new BadRequestException("Vui lòng chọn tệp tin để tải lên.");
         }
 
-        // Maximum size: 50MB
-        if (file.getSize() > 50L * 1024 * 1024) {
-            throw new BadRequestException("Kích thước tệp vượt quá giới hạn cho phép (tối đa 50MB).");
+        // Maximum size: 100MB
+        if (file.getSize() > 100L * 1024 * 1024) {
+            throw new BadRequestException("Kích thước tệp vượt quá giới hạn cho phép (tối đa 100MB).");
         }
 
         String contentType = file.getContentType();
@@ -214,6 +214,9 @@ public class StorageServiceImpl implements StorageService {
             case "application/pdf" -> ".pdf";
             case "video/mp4" -> ".mp4";
             case "video/webm" -> ".webm";
+            case "video/quicktime" -> ".mov";
+            case "video/x-matroska" -> ".mkv";
+            case "video/ogg" -> ".ogv";
             default -> ".bin";
         };
     }
