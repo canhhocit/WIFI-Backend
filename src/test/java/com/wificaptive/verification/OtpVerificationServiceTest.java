@@ -68,5 +68,31 @@ class OtpVerificationServiceTest {
         boolean remembered = otpService.isMacRemembered("00:11:22:33:44:bb");
         assertTrue(remembered);
     }
+
+    @Test
+    void testSendOtpWithRedisAndRateLimit() {
+        org.springframework.data.redis.core.StringRedisTemplate redisTemplate = mock(org.springframework.data.redis.core.StringRedisTemplate.class);
+        org.springframework.data.redis.core.ValueOperations<String, String> valOps = mock(org.springframework.data.redis.core.ValueOperations.class);
+        when(redisTemplate.opsForValue()).thenReturn(valOps);
+
+        OtpVerificationService redisOtpService = new OtpVerificationService(rememberedDeviceRepository, redisTemplate);
+
+        OtpRequestDto sendReq = new OtpRequestDto();
+        sendReq.setPhoneNumber("0988776655");
+        sendReq.setClientMac("11:22:33:44:55:66");
+
+        when(redisTemplate.hasKey("rate:otp:0988776655")).thenReturn(false);
+
+        OtpResultDto sendResult = redisOtpService.sendOtp(sendReq);
+        assertTrue(sendResult.isSuccess());
+        verify(valOps, times(1)).set(eq("otp:0988776655"), any(), eq(300L), eq(java.util.concurrent.TimeUnit.SECONDS));
+        verify(valOps, times(1)).set(eq("rate:otp:0988776655"), eq("1"), eq(60L), eq(java.util.concurrent.TimeUnit.SECONDS));
+
+        // Rate limit hit
+        when(redisTemplate.hasKey("rate:otp:0988776655")).thenReturn(true);
+        when(redisTemplate.getExpire(eq("rate:otp:0988776655"), any())).thenReturn(45L);
+
+        assertThrows(com.wificaptive.common.exception.BadRequestException.class, () -> redisOtpService.sendOtp(sendReq));
+    }
 }
 

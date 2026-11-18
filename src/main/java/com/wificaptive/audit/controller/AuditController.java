@@ -21,7 +21,7 @@ public class AuditController {
 
     @GetMapping
     public ApiResponse<PageResponse<AuditEventDto>> getAuditEvents(
-            @RequestParam(required = false) AuditAction action,
+            @RequestParam(required = false) String action,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         Pageable pageable = PageRequest.of(page, Math.min(size, 100));

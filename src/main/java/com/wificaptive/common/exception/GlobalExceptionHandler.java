@@ -50,6 +50,23 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
     }
 
+    @ExceptionHandler(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleTypeMismatch(
+            org.springframework.web.method.annotation.MethodArgumentTypeMismatchException ex,
+            HttpServletRequest request) {
+        String paramName = ex.getName();
+        Object value = ex.getValue();
+        String message = String.format("Tham số '%s' có giá trị không hợp lệ: %s", paramName, value);
+        log.warn("Parameter type mismatch on {}: {}", request.getRequestURI(), message);
+        ErrorResponse error = new ErrorResponse(
+                HttpStatus.BAD_REQUEST.value(),
+                "INVALID_PARAMETER",
+                message,
+                request.getRequestURI()
+        );
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+    }
+
     @ExceptionHandler(GatewayException.class)
     public ResponseEntity<ErrorResponse> handleGatewayException(GatewayException ex, HttpServletRequest request) {
         log.error("Gateway error: {}", ex.getMessage());

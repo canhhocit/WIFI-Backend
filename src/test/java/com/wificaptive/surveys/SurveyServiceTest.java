@@ -4,7 +4,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wificaptive.common.exception.BadRequestException;
 import com.wificaptive.surveys.dto.SurveyResponseDto;
 import com.wificaptive.surveys.dto.SurveyResponseSubmitRequest;
+import com.wificaptive.surveys.dto.SurveyBranchingRuleDto;
+import com.wificaptive.surveys.dto.SurveyDto;
+import com.wificaptive.surveys.dto.SurveyQuestionDto;
 import com.wificaptive.surveys.entity.Survey;
+import com.wificaptive.surveys.entity.SurveyBranchingRule;
 import com.wificaptive.surveys.entity.SurveyQuestion;
 import com.wificaptive.surveys.entity.SurveyResponse;
 import com.wificaptive.surveys.repository.SurveyBranchingRuleRepository;
@@ -22,6 +26,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Map;
 import java.util.Optional;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -80,6 +86,86 @@ class SurveyServiceTest {
         req.setAnswers(Map.of("q1", "Rất hài lòng"));
 
         assertThrows(BadRequestException.class, () -> surveyService.submitResponse(1L, req));
+    }
+
+    @Test
+    void createSurveyMapsDraftBranchTargetsToSavedQuestionIds() {
+        Survey survey = new Survey();
+        survey.setId(7L);
+        List<SurveyQuestion> createdQuestions = new ArrayList<>();
+        when(surveyRepository.save(any(Survey.class))).thenAnswer(invocation -> {
+            Survey saved = invocation.getArgument(0);
+            saved.setId(7L);
+            return saved;
+        });
+        when(surveyRepository.findById(7L)).thenReturn(Optional.of(survey));
+        when(questionRepository.save(any(SurveyQuestion.class))).thenAnswer(invocation -> {
+            SurveyQuestion question = invocation.getArgument(0);
+            question.setId(100L + question.getSortOrder());
+            createdQuestions.add(question);
+            return question;
+        });
+        when(questionRepository.findBySurveyIdOrderBySortOrderAsc(7L)).thenReturn(createdQuestions);
+        when(branchingRuleRepository.findByQuestionId(any())).thenReturn(List.of());
+
+        SurveyQuestionDto first = question(-1L, "Câu đầu", 0);
+        SurveyBranchingRuleDto branch = new SurveyBranchingRuleDto();
+        branch.setConditionValue("Không hài lòng");
+        branch.setNextQuestionId(-2L);
+        first.setBranchingRules(List.of(branch));
+        SurveyQuestionDto second = question(-2L, "Câu tiếp", 1);
+
+        SurveyDto request = new SurveyDto();
+        request.setTitle("Khảo sát thử");
+        request.setQuestions(List.of(first, second));
+
+        surveyService.createSurvey(request);
+
+        org.mockito.ArgumentCaptor<SurveyBranchingRule> ruleCaptor = org.mockito.ArgumentCaptor.forClass(SurveyBranchingRule.class);
+        verify(branchingRuleRepository).save(ruleCaptor.capture());
+        assertEquals(100L, ruleCaptor.getValue().getQuestionId());
+        assertEquals(101L, ruleCaptor.getValue().getNextQuestionId());
+        assertTrue(createdQuestions.get(0).isRequired());
+    }
+
+    @Test
+    void createSurveyRejectsBackwardBranchTargets() {
+        Survey survey = new Survey();
+        survey.setId(8L);
+        when(surveyRepository.save(any(Survey.class))).thenAnswer(invocation -> {
+            Survey saved = invocation.getArgument(0);
+            saved.setId(8L);
+            return saved;
+        });
+        when(questionRepository.save(any(SurveyQuestion.class))).thenAnswer(invocation -> {
+            SurveyQuestion question = invocation.getArgument(0);
+            question.setId(200L + question.getSortOrder());
+            return question;
+        });
+
+        SurveyQuestionDto first = question(-1L, "Câu đầu", 0);
+        SurveyQuestionDto second = question(-2L, "Câu sau", 1);
+        SurveyBranchingRuleDto branch = new SurveyBranchingRuleDto();
+        branch.setConditionValue("Có");
+        branch.setNextQuestionId(-1L);
+        second.setBranchingRules(List.of(branch));
+
+        SurveyDto request = new SurveyDto();
+        request.setTitle("Khảo sát thử");
+        request.setQuestions(List.of(first, second));
+
+        assertThrows(BadRequestException.class, () -> surveyService.createSurvey(request));
+        verify(branchingRuleRepository, never()).save(any(SurveyBranchingRule.class));
+    }
+
+    private SurveyQuestionDto question(Long id, String text, int order) {
+        SurveyQuestionDto question = new SurveyQuestionDto();
+        question.setId(id);
+        question.setQuestionText(text);
+        question.setQuestionType("SINGLE_CHOICE");
+        question.setSortOrder(order);
+        question.setRequired(false);
+        return question;
     }
 
     @Test

@@ -117,6 +117,9 @@ public class SurveyService {
 
         Survey saved = surveyRepository.save(s);
 
+        Map<Long, Long> draftQuestionIdMap = new HashMap<>();
+        Map<Long, Integer> questionOrderByDraftId = new HashMap<>();
+        List<Map.Entry<SurveyQuestionDto, SurveyQuestion>> createdQuestions = new ArrayList<>();
         if (dto.getQuestions() != null) {
             int order = 0;
             for (SurveyQuestionDto qDto : dto.getQuestions()) {
@@ -126,19 +129,41 @@ public class SurveyService {
                 q.setQuestionType(qDto.getQuestionType() != null ? qDto.getQuestionType() : "SINGLE_CHOICE");
                 q.setOptionsJson(qDto.getOptionsJson());
                 q.setSortOrder(order++);
-                q.setRequired(qDto.isRequired());
+                q.setRequired(qDto.isRequired()
+                        || (qDto.getBranchingRules() != null && !qDto.getBranchingRules().isEmpty()));
 
                 SurveyQuestion savedQ = questionRepository.save(q);
+                if (qDto.getId() != null) {
+                    draftQuestionIdMap.put(qDto.getId(), savedQ.getId());
+                    questionOrderByDraftId.put(qDto.getId(), savedQ.getSortOrder());
+                }
+                createdQuestions.add(Map.entry(qDto, savedQ));
+            }
 
-                if (qDto.getBranchingRules() != null) {
-                    for (SurveyBranchingRuleDto rDto : qDto.getBranchingRules()) {
-                        SurveyBranchingRule rule = new SurveyBranchingRule();
-                        rule.setQuestionId(savedQ.getId());
-                        rule.setConditionValue(rDto.getConditionValue());
-                        rule.setNextQuestionId(rDto.getNextQuestionId());
-                        rule.setTerminateSurvey(rDto.isTerminateSurvey());
-                        branchingRuleRepository.save(rule);
+            for (Map.Entry<SurveyQuestionDto, SurveyQuestion> created : createdQuestions) {
+                SurveyQuestionDto qDto = created.getKey();
+                SurveyQuestion savedQ = created.getValue();
+                if (qDto.getBranchingRules() == null) continue;
+
+                for (SurveyBranchingRuleDto rDto : qDto.getBranchingRules()) {
+                    SurveyBranchingRule rule = new SurveyBranchingRule();
+                    rule.setQuestionId(savedQ.getId());
+                    rule.setConditionValue(rDto.getConditionValue());
+                    Long targetId = rDto.getNextQuestionId();
+                    if (targetId != null) {
+                        Long targetDraftId = targetId;
+                        targetId = draftQuestionIdMap.get(targetDraftId);
+                        Integer targetOrder = questionOrderByDraftId.get(targetDraftId);
+                        if (targetId == null || targetOrder == null) {
+                            throw new BadRequestException("Nhánh khảo sát đang trỏ tới câu hỏi không tồn tại");
+                        }
+                        if (targetOrder <= savedQ.getSortOrder()) {
+                            throw new BadRequestException("Nhánh khảo sát chỉ được chuyển tới câu hỏi đứng sau câu hiện tại");
+                        }
                     }
+                    rule.setNextQuestionId(targetId);
+                    rule.setTerminateSurvey(rDto.isTerminateSurvey());
+                    branchingRuleRepository.save(rule);
                 }
             }
         }

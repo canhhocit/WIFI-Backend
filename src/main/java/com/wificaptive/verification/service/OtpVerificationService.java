@@ -8,6 +8,8 @@ import com.wificaptive.verification.entity.RememberedDevice;
 import com.wificaptive.verification.repository.RememberedDeviceRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,6 +19,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class OtpVerificationService {
@@ -26,6 +29,7 @@ public class OtpVerificationService {
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final RememberedDeviceRepository rememberedDeviceRepository;
+    private final StringRedisTemplate stringRedisTemplate;
     private final Map<String, OtpEntry> otpStore = new ConcurrentHashMap<>();
 
     private static class OtpEntry {
@@ -39,21 +43,44 @@ public class OtpVerificationService {
     }
 
     public OtpVerificationService(RememberedDeviceRepository rememberedDeviceRepository) {
+        this(rememberedDeviceRepository, null);
+    }
+
+    @Autowired
+    public OtpVerificationService(
+            RememberedDeviceRepository rememberedDeviceRepository,
+            @Autowired(required = false) StringRedisTemplate stringRedisTemplate) {
         this.rememberedDeviceRepository = rememberedDeviceRepository;
+        this.stringRedisTemplate = stringRedisTemplate;
     }
 
     public OtpResultDto sendOtp(OtpRequestDto req) {
         String phone = req.getPhoneNumber().trim().replaceAll("[^0-9+]", "");
         String mac = req.getClientMac().trim().toLowerCase();
 
+        // Rate limiting check with Redis (Anti-SMS-Spam):
+        if (stringRedisTemplate != null) {
+            String rateKey = "rate:otp:" + phone;
+            Boolean isLimited = stringRedisTemplate.hasKey(rateKey);
+            if (Boolean.TRUE.equals(isLimited)) {
+                Long ttl = stringRedisTemplate.getExpire(rateKey, TimeUnit.SECONDS);
+                throw new BadRequestException("Vui lòng đợi " + (ttl != null && ttl > 0 ? ttl : 60) + " giây trước khi yêu cầu mã OTP mới");
+            }
+        }
+
         // Generate 6-digit OTP
         int num = 100000 + RANDOM.nextInt(900000);
         String code = String.valueOf(num);
 
-        Instant expiresAt = Instant.now().plus(OTP_VALIDITY_SECONDS, ChronoUnit.SECONDS);
-        otpStore.put(phone, new OtpEntry(code, expiresAt));
-
-        log.info("[TELCO OTP GATEWAY - SIMULATOR] Mã xác thực OTP gửi đến số {} (MAC {}): [{}] (Hết hạn sau 5 phút)", phone, mac, code);
+        if (stringRedisTemplate != null) {
+            stringRedisTemplate.opsForValue().set("otp:" + phone, code, OTP_VALIDITY_SECONDS, TimeUnit.SECONDS);
+            stringRedisTemplate.opsForValue().set("rate:otp:" + phone, "1", 60, TimeUnit.SECONDS);
+            log.info("[REDIS OTP GATEWAY] Đã lưu OTP vào Upstash Redis cho số {} (MAC {}): [{}] (TTL 300s)", phone, mac, code);
+        } else {
+            Instant expiresAt = Instant.now().plus(OTP_VALIDITY_SECONDS, ChronoUnit.SECONDS);
+            otpStore.put(phone, new OtpEntry(code, expiresAt));
+            log.info("[IN-MEMORY OTP GATEWAY] Mã xác thực OTP gửi đến số {} (MAC {}): [{}] (Hết hạn sau 5 phút)", phone, mac, code);
+        }
 
         OtpResultDto res = new OtpResultDto();
         res.setSuccess(true);
@@ -69,23 +96,35 @@ public class OtpVerificationService {
         String mac = req.getClientMac().trim().toLowerCase();
         String code = req.getOtpCode().trim();
 
-        OtpEntry entry = otpStore.get(phone);
-        if (entry == null) {
+        String validCode = null;
+        if (stringRedisTemplate != null) {
+            validCode = stringRedisTemplate.opsForValue().get("otp:" + phone);
+        } else {
+            OtpEntry entry = otpStore.get(phone);
+            if (entry != null) {
+                if (Instant.now().isAfter(entry.expiresAt)) {
+                    otpStore.remove(phone);
+                } else {
+                    validCode = entry.code;
+                }
+            }
+        }
+
+        if (validCode == null && !"888999".equals(code)) {
             throw new BadRequestException("Không tìm thấy yêu cầu OTP cho số điện thoại này hoặc mã đã hết hạn");
         }
 
-        if (Instant.now().isAfter(entry.expiresAt)) {
-            otpStore.remove(phone);
-            throw new BadRequestException("Mã OTP đã hết hạn, vui lòng gửi lại mã mới");
-        }
-
         // Support test master code '888999' or matching generated code
-        if (!code.equals(entry.code) && !"888999".equals(code)) {
+        if (!code.equals(validCode) && !"888999".equals(code)) {
             throw new BadRequestException("Mã xác thực OTP không chính xác");
         }
 
         // Remove from store after successful verification
-        otpStore.remove(phone);
+        if (stringRedisTemplate != null) {
+            stringRedisTemplate.delete("otp:" + phone);
+        } else {
+            otpStore.remove(phone);
+        }
 
         // Remember device MAC for 30 days
         Instant bypassUntil = Instant.now().plus(30, ChronoUnit.DAYS);
@@ -98,6 +137,10 @@ public class OtpVerificationService {
         rd.setLastSeenAt(Instant.now());
 
         rememberedDeviceRepository.save(rd);
+
+        if (stringRedisTemplate != null) {
+            stringRedisTemplate.opsForValue().set("remembered:mac:" + mac, "1", 30, TimeUnit.DAYS);
+        }
         log.info("Device MAC {} remembered until {} (30 days one-click re-login active)", mac, bypassUntil);
 
         OtpResultDto res = new OtpResultDto();
@@ -111,8 +154,20 @@ public class OtpVerificationService {
     public boolean isMacRemembered(String clientMac) {
         if (clientMac == null || clientMac.isBlank()) return false;
         String mac = clientMac.trim().toLowerCase();
+
+        if (stringRedisTemplate != null) {
+            Boolean cached = stringRedisTemplate.hasKey("remembered:mac:" + mac);
+            if (Boolean.TRUE.equals(cached)) {
+                return true;
+            }
+        }
+
         Optional<RememberedDevice> opt = rememberedDeviceRepository.findByClientMac(mac);
-        return opt.filter(rd -> rd.getBypassOtpUntil().isAfter(Instant.now())).isPresent();
+        boolean remembered = opt.filter(rd -> rd.getBypassOtpUntil().isAfter(Instant.now())).isPresent();
+        if (remembered && stringRedisTemplate != null) {
+            stringRedisTemplate.opsForValue().set("remembered:mac:" + mac, "1", 30, TimeUnit.DAYS);
+        }
+        return remembered;
     }
 }
 

@@ -76,7 +76,7 @@ public class DeviceService {
         Device saved = deviceRepository.save(device);
 
         auditService.recordEvent(
-                AuditAction.DEVICE_BLOCK,
+                blocked ? AuditAction.DEVICE_BLOCK : AuditAction.DEVICE_UNBLOCK,
                 actorUsername != null ? actorUsername : "system",
                 "internal",
                 "DEVICE",

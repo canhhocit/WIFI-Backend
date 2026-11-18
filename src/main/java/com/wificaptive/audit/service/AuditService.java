@@ -36,6 +36,31 @@ public class AuditService {
     }
 
     @Transactional(readOnly = true)
+    public PageResponse<AuditEventDto> getAuditEvents(String actionStr, Pageable pageable) {
+        if (actionStr == null || actionStr.isBlank()) {
+            return getAuditEvents((AuditAction) null, pageable);
+        }
+
+        String normalized = actionStr.trim().toUpperCase();
+        // Check legacy aliases
+        if ("USER_CREATE".equals(normalized)) {
+            return getAuditEvents(AuditAction.ADMIN_CREATE_USER, pageable);
+        } else if ("USER_UPDATE".equals(normalized)) {
+            return getAuditEvents(AuditAction.ADMIN_UPDATE_USER, pageable);
+        } else if ("USER_UNLOCK".equals(normalized)) {
+            return getAuditEvents(AuditAction.ADMIN_UNLOCK_USER, pageable);
+        }
+
+        try {
+            AuditAction action = AuditAction.valueOf(normalized);
+            return getAuditEvents(action, pageable);
+        } catch (IllegalArgumentException ex) {
+            log.warn("Unknown audit action requested: {}", actionStr);
+            return PageResponse.from(org.springframework.data.domain.Page.empty(pageable));
+        }
+    }
+
+    @Transactional(readOnly = true)
     public PageResponse<AuditEventDto> getAuditEvents(AuditAction action, Pageable pageable) {
         Page<AuditEvent> page = (action != null)
                 ? auditEventRepository.findByActionOrderByCreatedAtDesc(action, pageable)
