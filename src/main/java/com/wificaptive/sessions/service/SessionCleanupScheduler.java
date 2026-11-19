@@ -16,7 +16,8 @@ public class SessionCleanupScheduler {
         this.sessionService = sessionService;
     }
 
-    @Scheduled(fixedDelay = 5000, initialDelay = 5000)
+    // Chạy dọn dẹp mỗi 60 giây (thay vì 5 giây) để tránh khóa bảng và giảm tải I/O Database
+    @Scheduled(fixedDelay = 60000, initialDelay = 15000)
     public void cleanupExpiredSessions() {
         try {
             int expired = sessionService.checkAndExpireSessions();

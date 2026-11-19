@@ -31,5 +31,11 @@ public interface NetworkDeviceRepository extends JpaRepository<NetworkDevice, Lo
 
     @Query("SELECT d FROM NetworkDevice d WHERE d.location.adminUnit.id = :adminUnitId")
     Page<NetworkDevice> findByLocationAdminUnitId(@Param("adminUnitId") Long adminUnitId, Pageable pageable);
+
+    @Query("SELECT d.macAddress FROM NetworkDevice d WHERE UPPER(d.deviceType) IN :types")
+    List<String> findMacAddressesByDeviceTypeIn(@Param("types") List<String> types);
+
+    @Query("SELECT CASE WHEN COUNT(d) > 0 THEN true ELSE false END FROM NetworkDevice d WHERE LOWER(REPLACE(REPLACE(d.macAddress, ':', ''), '-', '')) = :cleanMac AND UPPER(d.deviceType) IN :types")
+    boolean existsByCleanMacAndDeviceTypeIn(@Param("cleanMac") String cleanMac, @Param("types") List<String> types);
 }
 

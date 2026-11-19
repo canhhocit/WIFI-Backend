@@ -50,6 +50,66 @@ public class PortalService {
     private final com.wificaptive.network.service.MacBlacklistService macBlacklistService;
     private final com.wificaptive.devices.repository.NetworkDeviceRepository networkDeviceRepository;
 
+    // 1. In-memory cache for infrastructure MACs (AP/Router/Gateway/Switch) - Eliminates 8,000 findAll() scan on every hit
+    private final java.util.Set<String> infraMacCache = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private volatile Instant lastInfraMacRefresh = Instant.EPOCH;
+    private static final long INFRA_MAC_CACHE_TTL_MINUTES = 15;
+
+    // 2. In-memory cache for location base metadata (Location, Campaign, Survey, Template) - Eliminates 6 DB queries per hit
+    private final java.util.Map<String, CachedLocationPortalData> portalDataCache = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final long PORTAL_CACHE_TTL_MINUTES = 10;
+
+    // 3. In-memory cache for active CCU count per location (TTL: 5 seconds) - Prevents DB COUNT(*) lock hammering
+    private final java.util.Map<Long, CachedActiveCount> activeCountCache = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private static class CachedLocationPortalData {
+        final LocationDto locationDto;
+        final Long locationId;
+        final Long adminUnitId;
+        final int maxConcurrentUsers;
+        final com.wificaptive.campaigns.dto.CampaignDto activeCampaign;
+        final com.wificaptive.surveys.dto.SurveyDto activeSurvey;
+        final com.wificaptive.portal.template.dto.PortalTemplateDto portalTemplate;
+        final Instant expiresAt;
+
+        CachedLocationPortalData(
+                LocationDto locationDto,
+                Long locationId,
+                Long adminUnitId,
+                int maxConcurrentUsers,
+                com.wificaptive.campaigns.dto.CampaignDto activeCampaign,
+                com.wificaptive.surveys.dto.SurveyDto activeSurvey,
+                com.wificaptive.portal.template.dto.PortalTemplateDto portalTemplate,
+                Instant expiresAt) {
+            this.locationDto = locationDto;
+            this.locationId = locationId;
+            this.adminUnitId = adminUnitId;
+            this.maxConcurrentUsers = maxConcurrentUsers;
+            this.activeCampaign = activeCampaign;
+            this.activeSurvey = activeSurvey;
+            this.portalTemplate = portalTemplate;
+            this.expiresAt = expiresAt;
+        }
+
+        boolean isExpired() {
+            return Instant.now().isAfter(expiresAt);
+        }
+    }
+
+    private static class CachedActiveCount {
+        final long count;
+        final Instant expiresAt;
+
+        CachedActiveCount(long count, Instant expiresAt) {
+            this.count = count;
+            this.expiresAt = expiresAt;
+        }
+
+        boolean isExpired() {
+            return Instant.now().isAfter(expiresAt);
+        }
+    }
+
     @org.springframework.beans.factory.annotation.Autowired
     public PortalService(
             WifiLocationRepository locationRepository,
@@ -92,6 +152,48 @@ public class PortalService {
                 macBlacklistService, null);
     }
 
+    @jakarta.annotation.PostConstruct
+    public void init() {
+        refreshInfraMacCacheIfNeeded();
+    }
+
+    private void refreshInfraMacCacheIfNeeded() {
+        if (networkDeviceRepository == null) return;
+        Instant now = Instant.now();
+        if (java.time.Duration.between(lastInfraMacRefresh, now).toMinutes() >= INFRA_MAC_CACHE_TTL_MINUTES || infraMacCache.isEmpty()) {
+            synchronized (infraMacCache) {
+                if (java.time.Duration.between(lastInfraMacRefresh, now).toMinutes() >= INFRA_MAC_CACHE_TTL_MINUTES || infraMacCache.isEmpty()) {
+                    try {
+                        List<String> macs = networkDeviceRepository.findMacAddressesByDeviceTypeIn(List.of("ROUTER", "GATEWAY", "SWITCH"));
+                        infraMacCache.clear();
+                        if (macs != null) {
+                            for (String m : macs) {
+                                if (m != null) {
+                                    infraMacCache.add(m.replaceAll("[^a-fA-F0-9]", "").toLowerCase());
+                                }
+                            }
+                        }
+                        lastInfraMacRefresh = now;
+                        log.info("[PortalService] Refreshed infra MAC cache: {} devices cached in RAM", infraMacCache.size());
+                    } catch (Exception e) {
+                        log.warn("Failed to refresh infra MAC cache: {}", e.getMessage());
+                    }
+                }
+            }
+        }
+    }
+
+    public void invalidateInfraMacCache() {
+        infraMacCache.clear();
+        lastInfraMacRefresh = Instant.EPOCH;
+    }
+
+    public void invalidatePortalCache() {
+        portalDataCache.clear();
+        activeCountCache.clear();
+        log.info("[PortalService] Invalidated portal metadata and CCU cache");
+    }
+
     @Transactional(readOnly = true)
     public PortalInitResponse getPortalInit(String locationSlug, HttpServletRequest request) {
         return getPortalInit(locationSlug, null, request);
@@ -99,6 +201,67 @@ public class PortalService {
 
     @Transactional(readOnly = true)
     public PortalInitResponse getPortalInit(String locationSlug, String apMac, HttpServletRequest request) {
+        String cacheKey = (locationSlug != null && !locationSlug.isBlank())
+                ? locationSlug.trim().toLowerCase()
+                : (StringUtils.hasText(apMac) ? "ap_" + normalizeMacAddress(apMac) : "default");
+
+        CachedLocationPortalData cached = portalDataCache.get(cacheKey);
+        if (cached == null || cached.isExpired()) {
+            cached = loadAndCachePortalData(locationSlug, apMac, cacheKey);
+        }
+
+        String clientIp = resolveClientIp(request);
+        String clientMacHint = resolveClientMac(request, null);
+
+        boolean isMock = gatewayAdapter.getStatus().isSimulated();
+        String notice = isMock
+                ? "Simulated Gateway Mode: Network authorization is simulated for MVP testing. Physical firewall access has not been modified."
+                : "Live Gateway Connected.";
+
+        PortalInitResponse response = new PortalInitResponse(
+                cached.locationDto,
+                clientIp,
+                clientMacHint,
+                isMock,
+                notice
+        );
+
+        response.setActiveCampaign(cached.activeCampaign);
+        response.setActiveSurvey(cached.activeSurvey);
+        response.setPortalTemplate(cached.portalTemplate);
+
+        // Check if MAC is remembered (can bypass OTP)
+        boolean isRemembered = otpVerificationService != null && otpVerificationService.isMacRemembered(clientMacHint);
+        response.setMacRemembered(isRemembered);
+        response.setOtpRequired(!isRemembered);
+
+        // Check concurrent capacity (cached for 5 seconds to eliminate continuous COUNT(*) table scans)
+        long currentActive = getActiveSessionCount(cached.locationId);
+        int maxUsers = cached.maxConcurrentUsers;
+        response.setCurrentActiveUsers(currentActive);
+        response.setMaxConcurrentUsers(maxUsers);
+        response.setCapacityReached(currentActive >= maxUsers);
+
+        return response;
+    }
+
+    private long getActiveSessionCount(Long locationId) {
+        if (locationId == null) return 0;
+        CachedActiveCount c = activeCountCache.get(locationId);
+        if (c != null && !c.isExpired()) {
+            return c.count;
+        }
+        long count = sessionRepository.countActiveSessionsByLocation(locationId, Instant.now());
+        activeCountCache.put(locationId, new CachedActiveCount(count, Instant.now().plusSeconds(5)));
+        return count;
+    }
+
+    private synchronized CachedLocationPortalData loadAndCachePortalData(String locationSlug, String apMac, String cacheKey) {
+        CachedLocationPortalData existing = portalDataCache.get(cacheKey);
+        if (existing != null && !existing.isExpired()) {
+            return existing;
+        }
+
         WifiLocation location = null;
         if (StringUtils.hasText(locationSlug)) {
             location = locationRepository.findBySlug(locationSlug.trim())
@@ -127,66 +290,52 @@ public class PortalService {
             throw new ResourceNotFoundException("Active Wi-Fi location not found for captive portal initialization");
         }
 
-        String clientIp = resolveClientIp(request);
-        String clientMacHint = resolveClientMac(request, null);
+        LocationDto locDto = LocationDto.from(location);
+        int maxUsers = location.getMaxConcurrentUsers() != null ? location.getMaxConcurrentUsers() : 50;
 
-        boolean isMock = gatewayAdapter.getStatus().isSimulated();
-        String notice = isMock
-                ? "Simulated Gateway Mode: Network authorization is simulated for MVP testing. Physical firewall access has not been modified."
-                : "Live Gateway Connected.";
+        com.wificaptive.campaigns.dto.CampaignDto campaignDto = null;
+        com.wificaptive.surveys.dto.SurveyDto surveyDto = null;
 
-        PortalInitResponse response = new PortalInitResponse(
-                LocationDto.from(location),
-                clientIp,
-                clientMacHint,
-                isMock,
-                notice
-        );
-
-        // Link active policy/media campaign
         if (campaignService != null) {
             com.wificaptive.campaigns.entity.Campaign activeCampaign = campaignService.getActiveCampaignForLocation(
                     location.getId(),
                     location.getAdminUnitId()
             );
             if (activeCampaign != null) {
-                response.setActiveCampaign(com.wificaptive.campaigns.dto.CampaignDto.from(activeCampaign));
+                campaignDto = com.wificaptive.campaigns.dto.CampaignDto.from(activeCampaign);
                 if (surveyService != null) {
-                    response.setActiveSurvey(surveyService.getActiveSurveyForCampaign(activeCampaign.getId()));
+                    surveyDto = surveyService.getActiveSurveyForCampaign(activeCampaign.getId());
                 }
             }
         }
 
-        // If no survey linked to a specific campaign, load the active general/standalone survey
-        if (response.getActiveSurvey() == null && surveyService != null) {
-            response.setActiveSurvey(surveyService.getLatestActiveSurvey());
+        if (surveyDto == null && surveyService != null) {
+            surveyDto = surveyService.getLatestActiveSurvey();
         }
 
-        // Link template
+        com.wificaptive.portal.template.dto.PortalTemplateDto templateDto = null;
         if (portalTemplateService != null) {
-            response.setPortalTemplate(portalTemplateService.getDefaultOrActive());
+            templateDto = portalTemplateService.getDefaultOrActive();
         }
 
-        // Check if MAC is remembered (can bypass OTP)
-        boolean isRemembered = otpVerificationService != null && otpVerificationService.isMacRemembered(clientMacHint);
-        response.setMacRemembered(isRemembered);
-        response.setOtpRequired(!isRemembered);
+        CachedLocationPortalData data = new CachedLocationPortalData(
+                locDto,
+                location.getId(),
+                location.getAdminUnitId(),
+                maxUsers,
+                campaignDto,
+                surveyDto,
+                templateDto,
+                Instant.now().plus(PORTAL_CACHE_TTL_MINUTES, ChronoUnit.MINUTES)
+        );
 
-        // Check concurrent capacity
-        long currentActive = sessionRepository.countActiveSessionsByLocation(location.getId(), java.time.Instant.now());
-        int maxUsers = location.getMaxConcurrentUsers() != null ? location.getMaxConcurrentUsers() : 50;
-        response.setCurrentActiveUsers(currentActive);
-        response.setMaxConcurrentUsers(maxUsers);
-
-        long otherActive = (clientMacHint != null && !clientMacHint.isBlank())
-                ? sessionRepository.countActiveSessionsByLocationExcludingMac(location.getId(), clientMacHint, java.time.Instant.now())
-                : currentActive;
-        response.setCapacityReached(otherActive >= maxUsers);
-
-        return response;
+        portalDataCache.put(cacheKey, data);
+        if (location.getSlug() != null) {
+            portalDataCache.put(location.getSlug().trim().toLowerCase(), data);
+        }
+        return data;
     }
 
-    @Transactional
     public GuestLoginResponse authenticateGuest(GuestLoginRequest request, HttpServletRequest httpRequest) {
         if (!request.isConsentGiven()) {
             throw new BadRequestException("You must accept the Terms and Conditions to access the network.");
@@ -411,18 +560,8 @@ public class PortalService {
                 return false;
             }
         }
-        try {
-            return networkDeviceRepository.findAll().stream()
-                    .filter(dev -> "ROUTER".equalsIgnoreCase(dev.getDeviceType()) || "GATEWAY".equalsIgnoreCase(dev.getDeviceType()) || "SWITCH".equalsIgnoreCase(dev.getDeviceType()))
-                    .anyMatch(dev -> {
-                        String devClean = (dev.getMacAddress() != null)
-                                ? dev.getMacAddress().replaceAll("[^a-fA-F0-9]", "").toLowerCase()
-                                : "";
-                        return !devClean.isEmpty() && clean.equals(devClean);
-                    });
-        } catch (Exception e) {
-            return false;
-        }
+        refreshInfraMacCacheIfNeeded();
+        return infraMacCache.contains(clean);
     }
 
     private String resolveClientMac(HttpServletRequest request, String requestedMac) {
