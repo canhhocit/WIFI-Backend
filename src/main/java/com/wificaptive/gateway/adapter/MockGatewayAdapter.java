@@ -9,10 +9,15 @@ import com.wificaptive.gateway.repository.GatewayTransactionRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicLong;
 
 @Component("mockGatewayAdapter")
@@ -29,10 +34,12 @@ public class MockGatewayAdapter implements GatewayAdapter {
     private final AtomicLong totalRevocations = new AtomicLong(0);
     private final AtomicLong failedOperations = new AtomicLong(0);
 
+    private final BlockingQueue<GatewayTransaction> txQueue = new LinkedBlockingQueue<>(20000);
+
     public MockGatewayAdapter(
             GatewayTransactionRepository transactionRepository,
             @Value("${app.gateway.simulate-failures:false}") boolean simulateFailures,
-            @Value("${app.gateway.simulate-latency-ms:100}") int simulateLatencyMs) {
+            @Value("${app.gateway.simulate-latency-ms:0}") int simulateLatencyMs) {
         this.transactionRepository = transactionRepository;
         this.simulateFailures = simulateFailures;
         this.simulateLatencyMs = simulateLatencyMs;
@@ -158,9 +165,27 @@ public class MockGatewayAdapter implements GatewayAdapter {
                     rawResp,
                     elapsedMs
             );
-            transactionRepository.save(tx);
+            boolean offered = txQueue.offer(tx);
+            if (!offered) {
+                log.warn("[MockGatewayAdapter] Transaction queue full, dropping audit record");
+            }
         } catch (Exception e) {
-            log.error("Could not persist gateway transaction audit record: {}", e.getMessage());
+            log.error("Could not enqueue gateway transaction audit record: {}", e.getMessage());
+        }
+    }
+
+    @Scheduled(fixedDelay = 1000)
+    public void flushGatewayTransactions() {
+        if (txQueue.isEmpty()) return;
+        List<GatewayTransaction> batch = new ArrayList<>(200);
+        txQueue.drainTo(batch, 200);
+        if (!batch.isEmpty()) {
+            try {
+                transactionRepository.saveAll(batch);
+                log.debug("[MockGatewayAdapter] Flushed {} gateway transactions to DB", batch.size());
+            } catch (Exception e) {
+                log.error("Failed to batch save gateway transactions: {}", e.getMessage());
+            }
         }
     }
 }

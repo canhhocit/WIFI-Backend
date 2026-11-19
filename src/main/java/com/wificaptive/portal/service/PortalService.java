@@ -365,11 +365,13 @@ public class PortalService {
 
         // Close any prior active sessions for this device first (renewal / re-authentication)
         List<GuestSession> existingActive = sessionRepository.findActiveSessionsByMac(macAddress, Instant.now());
-        for (GuestSession prior : existingActive) {
-            log.info("Closing previous session {} for MAC {} due to re-authentication", prior.getId(), macAddress);
-            gatewayAdapter.revokeSession(prior.getId(), macAddress, clientIp, prior.getGatewayReference());
-            prior.setStatus(SessionStatus.EXPIRED);
-            sessionRepository.save(prior);
+        if (!existingActive.isEmpty()) {
+            for (GuestSession prior : existingActive) {
+                log.info("Closing previous session {} for MAC {} due to re-authentication", prior.getId(), macAddress);
+                gatewayAdapter.revokeSession(prior.getId(), macAddress, clientIp, prior.getGatewayReference());
+                prior.setStatus(SessionStatus.EXPIRED);
+            }
+            sessionRepository.saveAll(existingActive);
         }
 
         // Check concurrent users limit for location (excluding other sessions of this device)
@@ -380,7 +382,7 @@ public class PortalService {
                     otherActive + "/" + maxUsers + " người kết nối). Vui lòng thử lại sau khi có người rời đi để đảm bảo chất lượng mạng.");
         }
 
-        // 1. Create session in PENDING state
+        // 1. Prepare session in memory
         Instant now = Instant.now();
         String sessionToken = "sess_" + UUID.randomUUID().toString().replace("-", "");
 
@@ -431,6 +433,7 @@ public class PortalService {
             response.setExpiresAt(savedSession.getExpiresAt());
             response.setMessage("Internet access granted. Welcome to " + location.getName() + "!");
 
+            // ĐỀ XUẤT 2: Ghi Audit Log bất đồng bộ qua In-Memory Queue (không chiếm giữ kết nối DB)
             auditService.recordEvent(
                     AuditAction.SESSION_CREATE,
                     "guest:" + macAddress,

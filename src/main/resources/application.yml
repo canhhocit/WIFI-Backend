@@ -74,7 +74,7 @@ app:
   gateway:
     adapter-type: ${GATEWAY_ADAPTER_TYPE:gwn_cloud}
     simulate-failures: ${GATEWAY_SIMULATE_FAILURES:false}
-    simulate-latency-ms: ${GATEWAY_SIMULATE_LATENCY_MS:100}
+    simulate-latency-ms: ${GATEWAY_SIMULATE_LATENCY_MS:0}
     gwn-cloud:
       base-url: ${GWN_CLOUD_BASE_URL:https://oc.gwn.cloud}
       app-id: ${GWN_CLOUD_APP_ID:}

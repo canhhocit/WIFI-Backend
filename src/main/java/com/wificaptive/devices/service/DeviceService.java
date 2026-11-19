@@ -15,12 +15,17 @@ import org.springframework.util.StringUtils;
 
 import java.time.Instant;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class DeviceService {
 
     private final DeviceRepository deviceRepository;
     private final AuditService auditService;
+
+    // In-memory cache to prevent repetitive DB queries and row-lock updates on peak loads
+    private final ConcurrentHashMap<String, Device> activeDeviceCache = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Instant> deviceLastPersistMap = new ConcurrentHashMap<>();
 
     public DeviceService(DeviceRepository deviceRepository, AuditService auditService) {
         this.deviceRepository = deviceRepository;
@@ -30,6 +35,15 @@ public class DeviceService {
     @Transactional
     public Device registerOrUpdateDevice(String macAddress, String ipAddress, String userAgent) {
         String normalizedMac = (macAddress != null) ? macAddress.trim().toLowerCase() : "00:00:00:00:00:00";
+
+        // ĐỀ XUẤT 2: Fast-path In-Memory. Nếu thiết bị đã cập nhật trong vòng 5 phút (300s),
+        // trả về ngay từ RAM, triệt tiêu câu lệnh UPDATE CSDL và tranh chấp khóa dòng (Row-lock).
+        Device cached = activeDeviceCache.get(normalizedMac);
+        Instant lastPersist = deviceLastPersistMap.get(normalizedMac);
+        if (cached != null && lastPersist != null && lastPersist.plusSeconds(300).isAfter(Instant.now())) {
+            return cached;
+        }
+
         Optional<Device> existingOpt = deviceRepository.findByMacAddressIgnoreCase(normalizedMac);
 
         Device device;
@@ -53,7 +67,10 @@ public class DeviceService {
             );
         }
 
-        return deviceRepository.save(device);
+        Device saved = deviceRepository.save(device);
+        activeDeviceCache.put(normalizedMac, saved);
+        deviceLastPersistMap.put(normalizedMac, Instant.now());
+        return saved;
     }
 
     @Transactional(readOnly = true)
@@ -74,6 +91,13 @@ public class DeviceService {
                 .orElseThrow(() -> new ResourceNotFoundException("Device", "id", id));
         device.setBlocked(blocked);
         Device saved = deviceRepository.save(device);
+
+        // Invalidate in-memory cache on block status change
+        if (device.getMacAddress() != null) {
+            String norm = device.getMacAddress().trim().toLowerCase();
+            activeDeviceCache.remove(norm);
+            deviceLastPersistMap.remove(norm);
+        }
 
         auditService.recordEvent(
                 blocked ? AuditAction.DEVICE_BLOCK : AuditAction.DEVICE_UNBLOCK,
