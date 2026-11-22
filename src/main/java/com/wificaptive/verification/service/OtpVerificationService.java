@@ -32,6 +32,23 @@ public class OtpVerificationService {
     private final StringRedisTemplate stringRedisTemplate;
     private final Map<String, OtpEntry> otpStore = new ConcurrentHashMap<>();
 
+    // High-performance In-Memory cache for remembered MAC check (Prevents cross-region DB/Redis calls on portal init)
+    private final Map<String, CachedMacStatus> localMacCache = new ConcurrentHashMap<>();
+
+    private static class CachedMacStatus {
+        final boolean remembered;
+        final Instant expiresAt;
+
+        CachedMacStatus(boolean remembered, Instant expiresAt) {
+            this.remembered = remembered;
+            this.expiresAt = expiresAt;
+        }
+
+        boolean isExpired() {
+            return Instant.now().isAfter(expiresAt);
+        }
+    }
+
     private static class OtpEntry {
         final String code;
         final Instant expiresAt;
@@ -141,6 +158,7 @@ public class OtpVerificationService {
         if (stringRedisTemplate != null) {
             stringRedisTemplate.opsForValue().set("remembered:mac:" + mac, "1", 30, TimeUnit.DAYS);
         }
+        localMacCache.put(mac, new CachedMacStatus(true, bypassUntil));
         log.info("Device MAC {} remembered until {} (30 days one-click re-login active)", mac, bypassUntil);
 
         OtpResultDto res = new OtpResultDto();
@@ -155,9 +173,15 @@ public class OtpVerificationService {
         if (clientMac == null || clientMac.isBlank()) return false;
         String mac = clientMac.trim().toLowerCase();
 
+        CachedMacStatus localCached = localMacCache.get(mac);
+        if (localCached != null && !localCached.isExpired()) {
+            return localCached.remembered;
+        }
+
         if (stringRedisTemplate != null) {
             Boolean cached = stringRedisTemplate.hasKey("remembered:mac:" + mac);
             if (Boolean.TRUE.equals(cached)) {
+                localMacCache.put(mac, new CachedMacStatus(true, Instant.now().plus(10, ChronoUnit.MINUTES)));
                 return true;
             }
         }
@@ -167,6 +191,10 @@ public class OtpVerificationService {
         if (remembered && stringRedisTemplate != null) {
             stringRedisTemplate.opsForValue().set("remembered:mac:" + mac, "1", 30, TimeUnit.DAYS);
         }
+
+        // Cache result in local memory (10 minutes for positive, 60s for negative to eliminate DB hammering)
+        Instant localTtl = remembered ? Instant.now().plus(10, ChronoUnit.MINUTES) : Instant.now().plus(60, ChronoUnit.SECONDS);
+        localMacCache.put(mac, new CachedMacStatus(remembered, localTtl));
         return remembered;
     }
 }

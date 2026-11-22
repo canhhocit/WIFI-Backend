@@ -4,10 +4,13 @@ server:
     context-path: /
   tomcat:
     threads:
-      max: ${TOMCAT_MAX_THREADS:400}
-      min-spare: ${TOMCAT_MIN_SPARE:50}
+      max: ${TOMCAT_MAX_THREADS:250}
+      min-spare: ${TOMCAT_MIN_SPARE:25}
     max-connections: ${TOMCAT_MAX_CONNECTIONS:10000}
     accept-count: ${TOMCAT_ACCEPT_COUNT:1000}
+    connection-timeout: 10000
+    keep-alive-timeout: 30000
+    max-keep-alive-requests: 1000
   compression:
     enabled: true
     mime-types: text/html,text/xml,text/plain,text/css,text/javascript,application/javascript,application/json
@@ -40,9 +43,12 @@ spring:
     driver-class-name: org.postgresql.Driver
     hikari:
       connection-timeout: 20000
-      maximum-pool-size: ${HIKARI_MAX_POOL_SIZE:30}
-      minimum-idle: ${HIKARI_MIN_IDLE:10}
+      maximum-pool-size: ${HIKARI_MAX_POOL_SIZE:25}
+      minimum-idle: ${HIKARI_MIN_IDLE:5}
       idle-timeout: 300000
+      max-lifetime: 600000
+      keepalive-time: 30000
+      leak-detection-threshold: 30000
 
   jpa:
     hibernate:

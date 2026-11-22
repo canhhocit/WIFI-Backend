@@ -145,6 +145,7 @@ public class GuestSessionService {
 
         log.info("Processing {} expired guest sessions...", expiredSessions.size());
         int count = 0;
+        List<GuestSession> toUpdate = new java.util.ArrayList<>();
 
         for (GuestSession session : expiredSessions) {
             try {
@@ -155,7 +156,7 @@ public class GuestSessionService {
                         session.getGatewayReference()
                 );
                 session.setStatus(SessionStatus.EXPIRED);
-                sessionRepository.save(session);
+                toUpdate.add(session);
 
                 if (accessLogRetentionService != null) {
                     Instant start = session.getAuthorizedAt() != null ? session.getAuthorizedAt() : session.getCreatedAt();
@@ -183,6 +184,10 @@ public class GuestSessionService {
             } catch (Exception e) {
                 log.error("Error expiring session {}: {}", session.getId(), e.getMessage());
             }
+        }
+
+        if (!toUpdate.isEmpty()) {
+            sessionRepository.saveAll(toUpdate);
         }
 
         if (count > 0) {
