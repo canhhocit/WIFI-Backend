@@ -30,4 +30,4 @@ ON network_devices (device_type, status);
 
 -- 6. Index for Citizen Issue Reports Lookup by Location
 CREATE INDEX IF NOT EXISTS idx_citizen_reports_location_status
-ON citizen_wifi_issue_reports (location_id, status, created_at DESC);
+ON citizen_issue_reports (location_id, status, created_at DESC);
