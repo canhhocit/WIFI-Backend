@@ -59,19 +59,31 @@ public class IncidentTicketService {
     public PageResponse<IncidentTicketDto> getTickets(String status, int page, int size) {
         PageRequest pr = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
         Page<IncidentTicket> p;
-        if (status != null && !status.isBlank()) {
+        if (status != null && !status.isBlank() && !"ALL".equalsIgnoreCase(status)) {
             p = ticketRepository.findByStatus(status.trim().toUpperCase(), pr);
         } else {
             p = ticketRepository.findAll(pr);
         }
-        return PageResponse.from(p.map(IncidentTicketDto::from));
+
+        Map<Long, String> locationNameMap = locationRepository.findAll().stream()
+                .collect(Collectors.toMap(WifiLocation::getId, WifiLocation::getName, (a, b) -> a));
+
+        return PageResponse.from(p.map(t -> {
+            String locName = t.getLocationId() != null ? locationNameMap.getOrDefault(t.getLocationId(), "NVH #" + t.getLocationId()) : "Chưa xác định";
+            return IncidentTicketDto.from(t, locName, null);
+        }));
     }
 
     @Transactional(readOnly = true)
     public IncidentTicketDto getTicketById(Long id) {
         IncidentTicket t = ticketRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("IncidentTicket not found with id: " + id));
-        return IncidentTicketDto.from(t);
+        String locName = t.getLocationId() != null
+                ? locationRepository.findById(t.getLocationId()).map(WifiLocation::getName).orElse("NVH #" + t.getLocationId())
+                : "Chưa xác định";
+        List<IncidentUpdateDto> updates = updateRepository.findByTicketIdOrderByCreatedAtAsc(id)
+                .stream().map(IncidentUpdateDto::from).collect(Collectors.toList());
+        return IncidentTicketDto.from(t, locName, updates);
     }
 
     @Transactional
@@ -154,6 +166,60 @@ public class IncidentTicketService {
 
         log.info("Ticket {} marked as RESOLVED by {}", saved.getTicketCode(), actor);
         return IncidentTicketDto.from(saved);
+    }
+
+    @Transactional
+    public IncidentTicketDto closeTicket(Long id, String note, String actor) {
+        IncidentTicket t = ticketRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("IncidentTicket not found with id: " + id));
+
+        t.setStatus("CLOSED");
+        if (t.getResolvedAt() == null) {
+            t.setResolvedAt(Instant.now());
+        }
+
+        IncidentTicket saved = ticketRepository.save(t);
+
+        updateRepository.save(new IncidentUpdate(
+                saved.getId(),
+                actor != null ? actor : "admin",
+                "CLOSE",
+                StringUtils.hasText(note) ? note.trim() : "Xác nhận nghiệm thu và hoàn tất đóng phiếu sự cố kỹ thuật."
+        ));
+
+        log.info("Ticket {} marked as CLOSED by {}", saved.getTicketCode(), actor);
+        String locName = saved.getLocationId() != null
+                ? locationRepository.findById(saved.getLocationId()).map(WifiLocation::getName).orElse("NVH #" + saved.getLocationId())
+                : "Chưa xác định";
+        List<IncidentUpdateDto> updates = updateRepository.findByTicketIdOrderByCreatedAtAsc(id)
+                .stream().map(IncidentUpdateDto::from).collect(Collectors.toList());
+        return IncidentTicketDto.from(saved, locName, updates);
+    }
+
+    @Transactional
+    public IncidentTicketDto reopenTicket(Long id, String reason, String actor) {
+        IncidentTicket t = ticketRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("IncidentTicket not found with id: " + id));
+
+        t.setStatus("IN_PROGRESS");
+        t.setResolvedAt(null);
+
+        IncidentTicket saved = ticketRepository.save(t);
+
+        updateRepository.save(new IncidentUpdate(
+                saved.getId(),
+                actor != null ? actor : "admin",
+                "REOPEN",
+                StringUtils.hasText(reason) ? reason.trim() : "Mở lại phiếu sự cố do hiện trường chưa khôi phục hoàn toàn."
+        ));
+
+        log.info("Ticket {} reopened by {}", saved.getTicketCode(), actor);
+        String locName = saved.getLocationId() != null
+                ? locationRepository.findById(saved.getLocationId()).map(WifiLocation::getName).orElse("NVH #" + saved.getLocationId())
+                : "Chưa xác định";
+        List<IncidentUpdateDto> updates = updateRepository.findByTicketIdOrderByCreatedAtAsc(id)
+                .stream().map(IncidentUpdateDto::from).collect(Collectors.toList());
+        return IncidentTicketDto.from(saved, locName, updates);
     }
 
     

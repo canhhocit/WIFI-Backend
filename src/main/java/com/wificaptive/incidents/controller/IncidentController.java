@@ -7,6 +7,7 @@ import com.wificaptive.incidents.service.IncidentTicketService;
 import jakarta.validation.Valid;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/admin/incidents")
@@ -39,7 +40,7 @@ public class IncidentController {
         return ApiResponse.ok("Tạo phiếu báo sự cố thành công", ticketService.createTicket(req, actor));
     }
 
-    @PostMapping("/{id}/assign")
+    @RequestMapping(value = "/{id}/assign", method = {RequestMethod.POST, RequestMethod.PUT})
     public ApiResponse<IncidentTicketDto> assignTicket(
             @PathVariable Long id,
             @Valid @RequestBody AssignIncidentRequest req,
@@ -48,13 +49,33 @@ public class IncidentController {
         return ApiResponse.ok("Phân công kỹ thuật viên thành công", ticketService.assignTicket(id, req, actor));
     }
 
-    @PostMapping("/{id}/resolve")
+    @RequestMapping(value = "/{id}/resolve", method = {RequestMethod.POST, RequestMethod.PUT})
     public ApiResponse<IncidentTicketDto> resolveTicket(
             @PathVariable Long id,
             @Valid @RequestBody ResolveIncidentRequest req,
             Authentication auth) {
         String actor = auth != null ? auth.getName() : "technician";
         return ApiResponse.ok("Xác nhận giải quyết sự cố thành công", ticketService.resolveTicket(id, req, actor));
+    }
+
+    @RequestMapping(value = "/{id}/close", method = {RequestMethod.POST, RequestMethod.PUT})
+    public ApiResponse<IncidentTicketDto> closeTicket(
+            @PathVariable Long id,
+            @RequestBody(required = false) Map<String, String> body,
+            Authentication auth) {
+        String note = body != null ? body.get("note") : null;
+        String actor = auth != null ? auth.getName() : "admin";
+        return ApiResponse.ok("Xác nhận nghiệm thu và hoàn tất đóng phiếu sự cố", ticketService.closeTicket(id, note, actor));
+    }
+
+    @RequestMapping(value = "/{id}/reopen", method = {RequestMethod.POST, RequestMethod.PUT})
+    public ApiResponse<IncidentTicketDto> reopenTicket(
+            @PathVariable Long id,
+            @RequestBody(required = false) Map<String, String> body,
+            Authentication auth) {
+        String reason = body != null ? body.get("reason") : null;
+        String actor = auth != null ? auth.getName() : "admin";
+        return ApiResponse.ok("Đã mở lại phiếu sự cố để tiếp tục xử lý", ticketService.reopenTicket(id, reason, actor));
     }
 
     @GetMapping("/citizen-reports")

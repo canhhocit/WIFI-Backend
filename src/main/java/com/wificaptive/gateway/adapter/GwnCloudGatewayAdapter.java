@@ -119,6 +119,11 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
             String clientMacParam = clientMacClean + "," + clientMacColon;
 
             Map<String, Object> payload = new HashMap<>();
+            if (StringUtils.hasText(networkId)) {
+                try {
+                    payload.put("networkId", Long.parseLong(networkId.trim()));
+                } catch (NumberFormatException ignored) {}
+            }
             payload.put("deviceMac", targetRouterMac);
             payload.put("clientMacs", clientMacParam);
             payload.put("action", "2"); // "2" - Add bypass MAC on captive portal firewall
@@ -181,6 +186,11 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
             String clientMacParam = clientMacClean + "," + clientMacColon;
 
             Map<String, Object> payload = new HashMap<>();
+            if (StringUtils.hasText(networkId)) {
+                try {
+                    payload.put("networkId", Long.parseLong(networkId.trim()));
+                } catch (NumberFormatException ignored) {}
+            }
             payload.put("deviceMac", targetRouterMac);
             payload.put("clientMacs", clientMacParam);
             payload.put("action", "1"); // "1" - Delete bypass MAC (lock firewall)
