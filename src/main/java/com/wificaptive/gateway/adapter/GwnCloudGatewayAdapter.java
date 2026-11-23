@@ -557,12 +557,9 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
     
     public List<com.wificaptive.gateway.dto.GwnClientDto> getConnectedClientsFromCloud(String apMacFilter) {
         if (!isLiveCredentialsConfigured()) {
-            // Giả lập danh sách client thực địa tại trạm NVH
-            return List.of(
-                    new com.wificaptive.gateway.dto.GwnClientDto("70:F1:A1:22:33:44", "192.168.80.101", "iPhone-14-Pro", "WiFi Cong Cong Hai Phong", "EC:74:D7:98:B0:42", "GWN7002 Gateway", "5GHz", -58, 14502000L, 85400000L, 3420L),
-                    new com.wificaptive.gateway.dto.GwnClientDto("8C:85:90:55:66:77", "192.168.80.102", "Galaxy-S23", "WiFi Cong Cong Hai Phong", "EC:74:D7:98:B0:42", "GWN7002 Gateway", "5GHz", -64, 8200100L, 42100000L, 1850L),
-                    new com.wificaptive.gateway.dto.GwnClientDto("B4:2E:99:88:99:AA", "192.168.80.103", "Xiaomi-Redmi-Note", "WiFi Cong Cong Hai Phong", "EC:74:D7:98:B0:42", "GWN7002 Gateway", "2.4GHz", -72, 3400000L, 12500000L, 950L)
-            );
+            // Chưa cấu hình GWN Cloud App ID/Secret: không trả danh sách client giả lập
+            log.info("[GWN Cloud Gateway] Chưa cấu hình App ID/Secret - không có dữ liệu client thật");
+            return List.of();
         }
 
         try {

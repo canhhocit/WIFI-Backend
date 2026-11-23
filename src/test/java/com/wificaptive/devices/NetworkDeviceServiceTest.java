@@ -49,6 +49,9 @@ class NetworkDeviceServiceTest {
     @Mock
     private com.wificaptive.incidents.service.IncidentTicketService incidentTicketService;
 
+    @Mock
+    private com.wificaptive.devices.mesh.MeshApMonitorService meshApMonitorService;
+
     @InjectMocks
     private NetworkDeviceService deviceService;
 

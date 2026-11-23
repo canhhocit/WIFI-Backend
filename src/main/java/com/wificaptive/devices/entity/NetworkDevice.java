@@ -55,13 +55,28 @@ public class NetworkDevice {
     @Column(name = "installed_at")
     private Instant installedAt = Instant.now();
 
+    /** Mật khẩu quản trị mesh đang dùng: FACTORY = S/N gốc, MANAGED = mật khẩu quản lý chung của hệ thống */
+    @Column(name = "mesh_credential_state", length = 20)
+    private String meshCredentialState = CRED_FACTORY;
+
+    @Column(name = "mesh_password_rotated_at")
+    private Instant meshPasswordRotatedAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt = Instant.now();
 
+    public static final String CRED_FACTORY = "FACTORY";
+    public static final String CRED_MANAGED = "MANAGED";
+
     public NetworkDevice() {}
+
+    public String getMeshCredentialState() { return meshCredentialState; }
+    public void setMeshCredentialState(String meshCredentialState) { this.meshCredentialState = meshCredentialState; }
+    public Instant getMeshPasswordRotatedAt() { return meshPasswordRotatedAt; }
+    public void setMeshPasswordRotatedAt(Instant meshPasswordRotatedAt) { this.meshPasswordRotatedAt = meshPasswordRotatedAt; }
 
     @PreUpdate
     public void preUpdate() {

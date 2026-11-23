@@ -10,6 +10,8 @@ import com.wificaptive.devices.dto.DeviceSyncSummaryDto;
 import com.wificaptive.devices.dto.NetworkDeviceDto;
 import com.wificaptive.devices.entity.DeviceSwapLog;
 import com.wificaptive.devices.entity.NetworkDevice;
+import com.wificaptive.devices.mesh.MeshApMonitorService;
+import com.wificaptive.devices.mesh.MeshApSnapshotDto;
 import com.wificaptive.devices.repository.DeviceSwapLogRepository;
 import com.wificaptive.devices.repository.NetworkDeviceRepository;
 import com.wificaptive.gateway.adapter.GwnCloudGatewayAdapter;
@@ -41,19 +43,22 @@ public class NetworkDeviceService {
     private final AuditService auditService;
     private final GwnCloudGatewayAdapter gwnCloudGatewayAdapter;
     private final com.wificaptive.incidents.service.IncidentTicketService incidentTicketService;
+    private final MeshApMonitorService meshApMonitorService;
 
     public NetworkDeviceService(NetworkDeviceRepository deviceRepository,
                                 DeviceSwapLogRepository swapLogRepository,
                                 WifiLocationRepository locationRepository,
                                 AuditService auditService,
                                 GwnCloudGatewayAdapter gwnCloudGatewayAdapter,
-                                com.wificaptive.incidents.service.IncidentTicketService incidentTicketService) {
+                                com.wificaptive.incidents.service.IncidentTicketService incidentTicketService,
+                                MeshApMonitorService meshApMonitorService) {
         this.deviceRepository = deviceRepository;
         this.swapLogRepository = swapLogRepository;
         this.locationRepository = locationRepository;
         this.auditService = auditService;
         this.gwnCloudGatewayAdapter = gwnCloudGatewayAdapter;
         this.incidentTicketService = incidentTicketService;
+        this.meshApMonitorService = meshApMonitorService;
     }
 
     @Transactional(readOnly = true)
@@ -72,13 +77,13 @@ public class NetworkDeviceService {
         } else {
             page = deviceRepository.findAll(pageable);
         }
-        return PageResponse.from(page.map(NetworkDeviceDto::from));
+        return PageResponse.from(page.map(this::toDto));
     }
 
     @Transactional(readOnly = true)
     public List<NetworkDeviceDto> getDevicesByLocation(Long locationId) {
         return deviceRepository.findByLocationId(locationId).stream()
-                .map(NetworkDeviceDto::from)
+                .map(this::toDto)
                 .collect(Collectors.toList());
     }
 
@@ -86,7 +91,30 @@ public class NetworkDeviceService {
     public NetworkDeviceDto getDeviceById(Long id) {
         NetworkDevice dev = deviceRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("NetworkDevice", "id", id));
-        return NetworkDeviceDto.from(dev);
+        return toDto(dev);
+    }
+
+    /** DTO kèm nguồn dữ liệu giám sát, để giao diện không hiển thị số liệu tĩnh như dữ liệu trực tiếp. */
+    private NetworkDeviceDto toDto(NetworkDevice dev) {
+        NetworkDeviceDto dto = NetworkDeviceDto.from(dev);
+        if (MeshApMonitorService.isMeshAp(dev)) {
+            dto.setMonitoringSource(meshApMonitorService.monitoringSource(dev));
+        } else if ("ROUTER".equalsIgnoreCase(dev.getDeviceType())) {
+            dto.setMonitoringSource(gwnCloudGatewayAdapter.isLiveCredentialsConfigured() ? "GWN_CLOUD" : "GWN_SIMULATED");
+        } else {
+            dto.setMonitoringSource(MeshApMonitorService.SOURCE_NOT_MONITORED);
+        }
+        return dto;
+    }
+
+    /** Trạng thái mesh AP đọc trực tiếp từ thiết bị (SSID, kênh, client, RSSI, uptime, RAM). */
+    public MeshApSnapshotDto getMeshSnapshot(Long id, boolean refresh) {
+        NetworkDevice dev = deviceRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("NetworkDevice", "id", id));
+        if (!MeshApMonitorService.isMeshAp(dev)) {
+            throw new BadRequestException("Thiết bị không phải mesh AP Viettel HomeWiFi: " + dev.getModel());
+        }
+        return meshApMonitorService.getSnapshot(dev, refresh);
     }
 
     public NetworkDeviceDto swapDevice(DeviceSwapRequest request, String actorUsername) {
@@ -278,7 +306,17 @@ public class NetworkDeviceService {
     public List<com.wificaptive.gateway.dto.GwnClientDto> getConnectedClients(Long deviceId) {
         String apMac = null;
         if (deviceId != null) {
-            apMac = deviceRepository.findById(deviceId).map(NetworkDevice::getMacAddress).orElse(null);
+            NetworkDevice dev = deviceRepository.findById(deviceId).orElse(null);
+            if (dev != null && MeshApMonitorService.isMeshAp(dev)) {
+                // Mesh AP: Grandstream không thấy client của mesh -> đọc thẳng từ thiết bị
+                MeshApSnapshotDto snap = meshApMonitorService.getSnapshot(dev, true);
+                return snap.clients().stream()
+                        .map(c -> new com.wificaptive.gateway.dto.GwnClientDto(
+                                c.mac(), c.ip(), c.hostname(), c.ssid(), dev.getMacAddress(),
+                                dev.getModel(), c.band(), c.rssi(), 0L, 0L, 0L))
+                        .toList();
+            }
+            apMac = dev != null ? dev.getMacAddress() : null;
         }
         return gwnCloudGatewayAdapter.getConnectedClientsFromCloud(apMac);
     }

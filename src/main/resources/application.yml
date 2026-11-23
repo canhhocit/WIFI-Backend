@@ -87,6 +87,19 @@ app:
       app-secret: ${GWN_CLOUD_APP_SECRET:}
       network-id: ${GWN_CLOUD_NETWORK_ID:}
       device-mac: ${GWN_CLOUD_DEVICE_MAC:EC74D798B042}
+
+  # Giám sát trực tiếp mesh AP Viettel HomeWiFi (vAP-32X6V1) qua API ubus của thiết bị.
+  # Chỉ bật trên máy chủ có đường mạng tới LAN điểm phát (chạy tại chỗ hoặc qua VPN từ gateway).
+  mesh-ap:
+    enabled: ${MESH_AP_ENABLED:false}
+    username: ${MESH_AP_USERNAME:admin}
+    # Lần đầu hệ thống đăng nhập bằng S/N của từng thiết bị (mật khẩu gốc firmware V1.6.6_VN, nạp qua import
+    # danh sách bàn giao), sau đó tự đổi sang mật khẩu quản lý chung này. Để trống = giữ nguyên S/N.
+    # Đặt qua secret, KHÔNG ghi vào git.
+    managed-password: ${MESH_AP_MANAGED_PASSWORD:}
+    rotate-factory-password: ${MESH_AP_ROTATE_FACTORY_PASSWORD:true}
+    poll-interval-ms: ${MESH_AP_POLL_INTERVAL_MS:60000}
+    timeout-ms: ${MESH_AP_TIMEOUT_MS:5000}
     radius:
       enabled: ${RADIUS_ENABLED:true}
       port: ${RADIUS_PORT:1812}

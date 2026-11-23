@@ -22,6 +22,10 @@ public class NetworkDeviceDto {
     private Long uptimeSeconds;
     private Instant lastSeenAt;
     private Instant installedAt;
+    /** MESH_LIVE, MESH_UNREACHABLE, MESH_AUTH_FAILED, MESH_PENDING, GWN_CLOUD, GWN_SIMULATED, NOT_MONITORED */
+    private String monitoringSource;
+    private String meshCredentialState;
+    private Instant meshPasswordRotatedAt;
 
     public NetworkDeviceDto() {}
 
@@ -49,6 +53,8 @@ public class NetworkDeviceDto {
         dto.setUptimeSeconds(dev.getUptimeSeconds());
         dto.setLastSeenAt(dev.getLastSeenAt());
         dto.setInstalledAt(dev.getInstalledAt());
+        dto.setMeshCredentialState(dev.getMeshCredentialState());
+        dto.setMeshPasswordRotatedAt(dev.getMeshPasswordRotatedAt());
         return dto;
     }
 
@@ -105,5 +111,11 @@ public class NetworkDeviceDto {
 
     public Instant getInstalledAt() { return installedAt; }
     public void setInstalledAt(Instant installedAt) { this.installedAt = installedAt; }
+    public String getMeshCredentialState() { return meshCredentialState; }
+    public void setMeshCredentialState(String meshCredentialState) { this.meshCredentialState = meshCredentialState; }
+    public Instant getMeshPasswordRotatedAt() { return meshPasswordRotatedAt; }
+    public void setMeshPasswordRotatedAt(Instant meshPasswordRotatedAt) { this.meshPasswordRotatedAt = meshPasswordRotatedAt; }
+    public String getMonitoringSource() { return monitoringSource; }
+    public void setMonitoringSource(String monitoringSource) { this.monitoringSource = monitoringSource; }
 }
 

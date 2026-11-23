@@ -8,7 +8,7 @@ public record GwnClientDto(
         String apMac,
         String apName,
         String radioBand, // 2.4GHz / 5GHz
-        int rssi, // -30 to -90 dBm
+        Integer rssi, // -30 to -90 dBm
         long bytesRx,
         long bytesTx,
         long connectTimeSeconds

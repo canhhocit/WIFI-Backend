@@ -22,9 +22,12 @@ import java.util.List;
 public class NetworkDeviceController {
 
     private final NetworkDeviceService deviceService;
+    private final com.wificaptive.devices.service.NetworkDeviceImportService importService;
 
-    public NetworkDeviceController(NetworkDeviceService deviceService) {
+    public NetworkDeviceController(NetworkDeviceService deviceService,
+                                   com.wificaptive.devices.service.NetworkDeviceImportService importService) {
         this.deviceService = deviceService;
+        this.importService = importService;
     }
 
     @GetMapping
@@ -77,6 +80,36 @@ public class NetworkDeviceController {
     }
 
     
+    /** Import danh sách thiết bị bàn giao (MAC + S/N ...). dryRun=true chỉ kiểm tra, không ghi. */
+    @PostMapping("/import")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<com.wificaptive.devices.dto.NetworkDeviceImportResultDto>> importDevices(
+            @RequestParam("file") org.springframework.web.multipart.MultipartFile file,
+            @RequestParam(defaultValue = "true") boolean dryRun,
+            Authentication auth) throws java.io.IOException {
+        var result = importService.importFile(file.getInputStream(), file.getOriginalFilename(), dryRun,
+                auth != null ? auth.getName() : "admin");
+        String msg = dryRun
+                ? String.format("Kiểm tra xong: %d dòng hợp lệ để thêm/cập nhật, %d lỗi", result.created() + result.updated(), result.errors().size())
+                : String.format("Đã import: thêm %d, cập nhật %d, lỗi %d", result.created(), result.updated(), result.errors().size());
+        return ResponseEntity.ok(ApiResponse.ok(msg, result));
+    }
+
+    @GetMapping("/import/template")
+    public ResponseEntity<byte[]> importTemplate() {
+        return ResponseEntity.ok()
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=Danh_sach_thiet_bi_ban_giao.xlsx")
+                .contentType(org.springframework.http.MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(importService.generateTemplate());
+    }
+
+    @GetMapping("/{id}/mesh")
+    public ResponseEntity<ApiResponse<com.wificaptive.devices.mesh.MeshApSnapshotDto>> getMeshSnapshot(
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "true") boolean refresh) {
+        return ResponseEntity.ok(ApiResponse.ok(deviceService.getMeshSnapshot(id, refresh)));
+    }
+
     @PostMapping("/upgrade-firmware")
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
     public ResponseEntity<ApiResponse<com.wificaptive.gateway.dto.GwnUpgradeResult>> upgradeFirmware(
