@@ -295,9 +295,9 @@ public class LocationExcelService {
 
             // Sample rows
             Object[][] sampleData = {
-                    {"HP-HB-NVH01", "Nhà văn hóa Tổ dân phố số 1", "hp-hb-nvh01", "HP_HB_HVTHU", "Số 15 Hoàng Văn Thụ, Hồng Bàng", 20.865139, 106.683830, "VNPT", "HP-VNPT-0012", "Nguyễn Văn An", "0912345678", "00:1A:2B:3C:4D:5E", "00:1A:2B:3C:4D:5F"},
+                    {"HP-HB-NVH01", "Nhà văn hóa Tổ dân phố số 1", "hp-hb-nvh01", "HP_HB_HVTHU", "Số 15 Hoàng Văn Thụ, Hồng Bàng", 20.865139, 106.683830, "Viettel", "HP-VIETTEL-0012", "Nguyễn Văn An", "0912345678", "00:1A:2B:3C:4D:5E", "00:1A:2B:3C:4D:5F"},
                     {"HP-NQ-NVH02", "Nhà văn hóa Khu dân cư Máy Tơ", "hp-nq-nvh02", "HP_NQ_MAYTO", "Số 42 Máy Tơ, Ngô Quyền", 20.859210, 106.691230, "Viettel", "HP-VT-0045", "Trần Thị Bình", "0987654321", "00:1A:2B:3C:6A:11", "00:1A:2B:3C:6A:12"},
-                    {"HP-CH-NVH03", "Nhà văn hóa Thị trấn Cát Bà", "hp-ch-nvh03", "HP_CH_CATBA", "Tổ dân phố 2, Cát Bà, Cát Hải", 20.725830, 107.049440, "VNPT", "HP-VNPT-0089", "Lê Văn Cường", "0905123456", "00:1A:2B:3C:7B:21", "00:1A:2B:3C:7B:22"}
+                    {"HP-CH-NVH03", "Nhà văn hóa Thị trấn Cát Bà", "hp-ch-nvh03", "HP_CH_CATBA", "Tổ dân phố 2, Cát Bà, Cát Hải", 20.725830, 107.049440, "Viettel", "HP-VIETTEL-0089", "Lê Văn Cường", "0905123456", "00:1A:2B:3C:7B:21", "00:1A:2B:3C:7B:22"}
             };
 
             for (int r = 0; r < sampleData.length; r++) {

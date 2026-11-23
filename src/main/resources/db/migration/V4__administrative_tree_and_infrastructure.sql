@@ -28,7 +28,7 @@ ALTER TABLE wifi_locations ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;
 ALTER TABLE wifi_locations ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;
 ALTER TABLE wifi_locations ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'ACTIVE'; -- ACTIVE, MAINTENANCE, SUSPENDED, INACTIVE
 ALTER TABLE wifi_locations ADD COLUMN IF NOT EXISTS status_reason VARCHAR(255);
-ALTER TABLE wifi_locations ADD COLUMN IF NOT EXISTS isp_name VARCHAR(50); -- VNPT, Viettel, FPT
+ALTER TABLE wifi_locations ADD COLUMN IF NOT EXISTS isp_name VARCHAR(50); -- Viettel, FPT
 ALTER TABLE wifi_locations ADD COLUMN IF NOT EXISTS circuit_code VARCHAR(100);
 ALTER TABLE wifi_locations ADD COLUMN IF NOT EXISTS contact_name VARCHAR(100);
 ALTER TABLE wifi_locations ADD COLUMN IF NOT EXISTS contact_phone VARCHAR(20);
@@ -45,7 +45,7 @@ CREATE TABLE network_devices (
     serial_number VARCHAR(100) NOT NULL UNIQUE,
     mac_address VARCHAR(17) NOT NULL UNIQUE,
     model VARCHAR(100),
-    vendor VARCHAR(100), -- Cisco, Ruijie, Mikrotik, Huawei, VNPT Technology
+    vendor VARCHAR(100), -- Cisco, Ruijie, Mikrotik, Huawei, Viettel Technology
     firmware_version VARCHAR(50),
     ip_address VARCHAR(45),
     status VARCHAR(20) NOT NULL DEFAULT 'ONLINE', -- ONLINE, OFFLINE, DEGRADED, MAINTENANCE

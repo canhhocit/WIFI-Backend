@@ -83,15 +83,15 @@ class IncidentTicketServiceTest {
 
         // Assign
         AssignIncidentRequest assignReq = new AssignIncidentRequest();
-        assignReq.setAssignedTo("VNPT_Engineer_01");
+        assignReq.setAssignedTo("Viettel_Engineer_01");
         IncidentTicketDto assigned = incidentService.assignTicket(101L, assignReq, "lead_dispatcher");
         assertEquals("ASSIGNED", assigned.getStatus());
-        assertEquals("VNPT_Engineer_01", assigned.getAssignedTo());
+        assertEquals("Viettel_Engineer_01", assigned.getAssignedTo());
 
         // Resolve
         ResolveIncidentRequest resolveReq = new ResolveIncidentRequest();
         resolveReq.setResolutionNotes("Hàn nối lại sợi quang suy hao 0.02dB");
-        IncidentTicketDto resolved = incidentService.resolveTicket(101L, resolveReq, "VNPT_Engineer_01");
+        IncidentTicketDto resolved = incidentService.resolveTicket(101L, resolveReq, "Viettel_Engineer_01");
         assertEquals("RESOLVED", resolved.getStatus());
         assertNotNull(resolved.getResolvedAt());
     }

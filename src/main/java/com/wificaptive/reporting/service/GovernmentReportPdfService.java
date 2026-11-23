@@ -226,7 +226,7 @@ public class GovernmentReportPdfService {
             leftFooter.addElement(new Paragraph("Nơi nhận:", cellBold));
             leftFooter.addElement(new Paragraph("- UBND Thành phố Hải Phòng (để b/c);", cellRegular));
             leftFooter.addElement(new Paragraph("- Giám đốc Sở TT&TT (để chỉ đạo);", cellRegular));
-            leftFooter.addElement(new Paragraph("- VNPT, Viettel Hải Phòng (để phối hợp);", cellRegular));
+            leftFooter.addElement(new Paragraph("- Viettel Hải Phòng (để phối hợp);", cellRegular));
             leftFooter.addElement(new Paragraph("- Lưu: VT, CNTT.", cellRegular));
             footerTable.addCell(leftFooter);
 

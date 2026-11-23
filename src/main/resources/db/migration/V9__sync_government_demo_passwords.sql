@@ -6,4 +6,4 @@ UPDATE admin_users
 SET failed_login_attempts = 0,
     locked_until = NULL,
     enabled = TRUE
-WHERE username IN ('admin', 'sotttt_admin', 'hongbang_officer', 'vnpt_tech01');
+WHERE username IN ('admin', 'sotttt_admin', 'hongbang_officer', 'viettel_tech01');

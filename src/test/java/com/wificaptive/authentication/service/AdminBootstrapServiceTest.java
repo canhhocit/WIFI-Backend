@@ -70,10 +70,10 @@ class AdminBootstrapServiceTest {
         assertThat(hongbang.getRole()).isEqualTo(AdminRole.ROLE_DISTRICT_OFFICER);
         assertThat(passwordEncoder.matches("password123", hongbang.getPasswordHash())).isTrue();
 
-        // Verify vnpt_tech01
-        AdminUser vnpt = savedUsers.stream().filter(u -> u.getUsername().equals("vnpt_tech01")).findFirst().orElseThrow();
-        assertThat(vnpt.getRole()).isEqualTo(AdminRole.ROLE_VNPT_ENGINEER);
-        assertThat(passwordEncoder.matches("password123", vnpt.getPasswordHash())).isTrue();
+        // Verify viettel_tech01
+        AdminUser viettel = savedUsers.stream().filter(u -> u.getUsername().equals("viettel_tech01")).findFirst().orElseThrow();
+        assertThat(viettel.getRole()).isEqualTo(AdminRole.ROLE_VIETTEL_ENGINEER);
+        assertThat(passwordEncoder.matches("password123", viettel.getPasswordHash())).isTrue();
     }
 
     @Test
