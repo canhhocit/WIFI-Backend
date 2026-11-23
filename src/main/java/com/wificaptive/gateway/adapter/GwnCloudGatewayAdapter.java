@@ -117,9 +117,8 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
             String clientMacClean = cleanMacAddress(macAddress).toLowerCase();
             String clientMacColon = formatMacAddress(macAddress).toLowerCase();
             String clientMacUpperColon = formatMacAddress(macAddress).toUpperCase();
-            String clientMacUpperClean = cleanMacAddress(macAddress).toUpperCase();
-            String clientMacParam = String.format("%s,%s,%s,%s",
-                    clientMacColon, clientMacUpperColon, clientMacClean, clientMacUpperClean);
+            // Official Grandstream GWN standard expects uppercase colon-separated MAC address (e.g. 20:82:6A:C3:64:6F)
+            String clientMacParam = clientMacUpperColon;
 
             Map<String, Object> payload = new HashMap<>();
             if (StringUtils.hasText(networkId)) {
@@ -187,9 +186,8 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
             String clientMacClean = cleanMacAddress(macAddress).toLowerCase();
             String clientMacColon = formatMacAddress(macAddress).toLowerCase();
             String clientMacUpperColon = formatMacAddress(macAddress).toUpperCase();
-            String clientMacUpperClean = cleanMacAddress(macAddress).toUpperCase();
-            String clientMacParam = String.format("%s,%s,%s,%s",
-                    clientMacColon, clientMacUpperColon, clientMacClean, clientMacUpperClean);
+            // Official Grandstream GWN standard expects uppercase colon-separated MAC address (e.g. 20:82:6A:C3:64:6F)
+            String clientMacParam = clientMacUpperColon;
 
             Map<String, Object> payload = new HashMap<>();
             if (StringUtils.hasText(networkId)) {
