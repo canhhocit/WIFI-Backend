@@ -49,3 +49,4 @@ uploads/
 
 # Token agent mesh (bí mật, chỉ để trên máy chạy agent)
 tools/mesh-agent/.agent-token
+__pycache__/
