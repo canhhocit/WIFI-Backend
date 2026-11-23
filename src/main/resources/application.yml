@@ -37,9 +37,9 @@ spring:
       max-request-size: 100MB
 
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://ep-little-credit-aon6wivs-pooler.c-2.ap-southeast-1.aws.neon.tech:5432/neondb?sslmode=require}
-    username: ${POSTGRES_USER:neondb_owner}
-    password: ${POSTGRES_PASSWORD:npg_om9Kkzucr2wG}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://postgres-service.default.svc.cluster.local:5432/wifi_haiphong}
+    username: ${POSTGRES_USER:${SPRING_DATASOURCE_USERNAME:postgres}}
+    password: ${POSTGRES_PASSWORD:${SPRING_DATASOURCE_PASSWORD:Dnt@#$123!}}
     driver-class-name: org.postgresql.Driver
     hikari:
       connection-timeout: 20000
