@@ -97,14 +97,16 @@ public class AnalyticsService {
         long switchOffline = netDevs.stream().filter(d -> "SWITCH".equalsIgnoreCase(d.getDeviceType()) && !"ONLINE".equalsIgnoreCase(d.getStatus())).count();
 
         long apOnline = netDevs.stream().filter(d -> ("ACCESS_POINT".equalsIgnoreCase(d.getDeviceType()) || "AP".equalsIgnoreCase(d.getDeviceType())) && "ONLINE".equalsIgnoreCase(d.getStatus())).count();
-        long apOffline = netDevs.stream().filter(d -> ("ACCESS_POINT".equalsIgnoreCase(d.getDeviceType()) || "AP".equalsIgnoreCase(d.getDeviceType())) && !"ONLINE".equalsIgnoreCase(d.getStatus())).count();
+        // UNKNOWN = chưa được giám sát trực tiếp: không tính là Offline để tránh báo lỗi giả
+        long apUnmonitored = netDevs.stream().filter(d -> ("ACCESS_POINT".equalsIgnoreCase(d.getDeviceType()) || "AP".equalsIgnoreCase(d.getDeviceType())) && "UNKNOWN".equalsIgnoreCase(d.getStatus())).count();
+        long apOffline = netDevs.stream().filter(d -> ("ACCESS_POINT".equalsIgnoreCase(d.getDeviceType()) || "AP".equalsIgnoreCase(d.getDeviceType())) && !"ONLINE".equalsIgnoreCase(d.getStatus()) && !"UNKNOWN".equalsIgnoreCase(d.getStatus())).count();
 
         long clientWireless = activeSessions;
         long clientWired = 0;
 
         long errorLocs = Math.max(0, totalLocations - activeLocations);
         long totalDevsCount = netDevs.size();
-        long errorDevsCount = netDevs.stream().filter(d -> !"ONLINE".equalsIgnoreCase(d.getStatus())).count();
+        long errorDevsCount = netDevs.stream().filter(d -> !"ONLINE".equalsIgnoreCase(d.getStatus()) && !"UNKNOWN".equalsIgnoreCase(d.getStatus())).count();
 
         DeviceTopologySummaryDto topology = new DeviceTopologySummaryDto(
                 totalLocations,
@@ -120,6 +122,7 @@ public class AnalyticsService {
                 clientWired,
                 clientWireless
         );
+        topology.setApUnmonitored(apUnmonitored);
         dto.setTopology(topology);
 
         return dto;

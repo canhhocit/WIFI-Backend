@@ -14,6 +14,8 @@ public class DeviceTopologySummaryDto {
 
     private long apOnline;
     private long apOffline;
+    /** AP chưa được giám sát trực tiếp (trạng thái UNKNOWN) */
+    private long apUnmonitored;
 
     private long clientWired;
     private long clientWireless;
@@ -55,6 +57,8 @@ public class DeviceTopologySummaryDto {
     public long getRouterOffline() { return routerOffline; }
     public void setRouterOffline(long routerOffline) { this.routerOffline = routerOffline; }
 
+    public long getApUnmonitored() { return apUnmonitored; }
+    public void setApUnmonitored(long apUnmonitored) { this.apUnmonitored = apUnmonitored; }
     public long getSwitchOnline() { return switchOnline; }
     public void setSwitchOnline(long switchOnline) { this.switchOnline = switchOnline; }
 
