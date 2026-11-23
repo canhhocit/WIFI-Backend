@@ -116,7 +116,10 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
             String targetRouterMac = cleanMacAddress(StringUtils.hasText(deviceMac) ? deviceMac : "EC74D798B042").toUpperCase();
             String clientMacClean = cleanMacAddress(macAddress).toLowerCase();
             String clientMacColon = formatMacAddress(macAddress).toLowerCase();
-            String clientMacParam = clientMacClean + "," + clientMacColon;
+            String clientMacUpperColon = formatMacAddress(macAddress).toUpperCase();
+            String clientMacUpperClean = cleanMacAddress(macAddress).toUpperCase();
+            String clientMacParam = String.format("%s,%s,%s,%s",
+                    clientMacColon, clientMacUpperColon, clientMacClean, clientMacUpperClean);
 
             Map<String, Object> payload = new HashMap<>();
             if (StringUtils.hasText(networkId)) {
@@ -183,7 +186,10 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
             String targetRouterMac = cleanMacAddress(StringUtils.hasText(deviceMac) ? deviceMac : "EC74D798B042").toUpperCase();
             String clientMacClean = cleanMacAddress(macAddress).toLowerCase();
             String clientMacColon = formatMacAddress(macAddress).toLowerCase();
-            String clientMacParam = clientMacClean + "," + clientMacColon;
+            String clientMacUpperColon = formatMacAddress(macAddress).toUpperCase();
+            String clientMacUpperClean = cleanMacAddress(macAddress).toUpperCase();
+            String clientMacParam = String.format("%s,%s,%s,%s",
+                    clientMacColon, clientMacUpperColon, clientMacClean, clientMacUpperClean);
 
             Map<String, Object> payload = new HashMap<>();
             if (StringUtils.hasText(networkId)) {
