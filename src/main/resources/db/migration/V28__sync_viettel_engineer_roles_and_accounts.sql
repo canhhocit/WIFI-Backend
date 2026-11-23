@@ -12,8 +12,8 @@ WHERE username LIKE '%tech01%' OR role LIKE '%ENGINEER%';
 
 -- 2. Cập nhật bảng phân quyền vai trò
 UPDATE role_permissions
-SET role = 'ROLE_VIETTEL_ENGINEER'
-WHERE role LIKE '%ENGINEER%';
+SET role_name = 'ROLE_VIETTEL_ENGINEER'
+WHERE role_name LIKE '%ENGINEER%';
 
 -- 3. Cập nhật phân công sự cố
 UPDATE incident_tickets
