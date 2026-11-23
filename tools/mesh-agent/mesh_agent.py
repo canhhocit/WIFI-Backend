@@ -16,6 +16,7 @@ import http.cookiejar
 import ipaddress
 import json
 import os
+import re
 import socket
 import ssl
 import sys
@@ -56,6 +57,7 @@ class Mesh:
         self.host, self.password, self.timeout = host, password, timeout
         self.sid = None
         self._id = 0
+        self._logged_signal_source = False
 
     def login(self):
         jar = http.cookiejar.CookieJar()
@@ -69,7 +71,7 @@ class Mesh:
             opener.open(req, timeout=self.timeout)
         except urllib.error.HTTPError:
             pass  # 302 sau đăng nhập thành công, 403 khi sai mật khẩu
-        sid = next((c.value for c in jar if c.name.startswith("sysauth") and c.value != "deleted"), None)
+        sid = next((c.value for c in jar if c.name.startswith("sysauth") and c.value and c.value != "deleted"), None)
         if not sid:
             raise PermissionError("Mesh từ chối đăng nhập (sai S/N/mật khẩu)")
         self.sid = sid
@@ -82,13 +84,14 @@ class Mesh:
                                      headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(req, context=LAN_CTX, timeout=self.timeout) as r:
             resp = json.loads(r.read().decode("utf-8", "replace"))
-        if "error" in resp:
-            if resp["error"].get("code") == -32002:
+        err = resp.get("error") if isinstance(resp, dict) else None
+        if err:
+            if isinstance(err, dict) and err.get("code") == -32002:
                 raise PermissionError("access denied")
             if required:
-                raise RuntimeError(f"{obj}.{method}: {resp['error']}")
+                raise RuntimeError(f"{obj}.{method}: {err}")
             return None
-        res = resp.get("result") or []
+        res = (resp.get("result") if isinstance(resp, dict) else None) or []
         if len(res) >= 2 and res[0] == 0:
             return res[1]
         if required:
@@ -107,24 +110,79 @@ class Mesh:
     def _collect(self):
         topo = self.call("dat2wifi", "getTopologyDump", required=True)
         signals = {}
-        wifi = self.call("dat2wifi", "getWifiInfo") or {}
-        for radio in wifi.values() if isinstance(wifi, dict) else []:
-            for vif in (radio.get("vifs") or {}).values():
-                name = vif.get("vifname")
-                if not name or str(vif.get("state", "")).lower() != "up":
-                    continue
-                assoc = self.call("iwinfo", "assoclist", {"device": name}) or {}
-                for sta in assoc.get("results", []):
-                    if sta.get("mac") and "signal" in sta:
-                        signals[sta["mac"].upper()] = sta["signal"]
+        try:  # RSSI chỉ là thông tin bổ sung -> lỗi ở đây không làm hỏng cả lần đọc
+            signals = self._read_signals()
+        except PermissionError:
+            raise
+        except Exception as e:  # noqa: BLE001
+            log("Bỏ qua RSSI:", repr(e))
+        raw_topo = topo.get("luaTopologyInfo") if isinstance(topo, dict) else None
         return {
             "mode": "LIVE",
-            "topology": (topo or {}).get("luaTopologyInfo", "{}"),
+            "topology": raw_topo or "{}",
             "systemInfo": self.call("system", "info"),
             "board": self.call("system", "board"),
             "hostHints": self.call("luci-rpc", "getHostHints"),
             "signals": signals,
         }
+
+
+    # Firmware V1.6.6_VN: radio 5GHz trả "vifs": null trong getWifiInfo nên luôn thử thêm tên chuẩn của MT7981.
+    DEFAULT_IFNAMES = ("ra0", "rax0")
+
+    def _read_signals(self):
+        names = []
+        for radio in _values(self.call("dat2wifi", "getWifiInfo")):
+            for vif in _values(radio.get("vifs") if isinstance(radio, dict) else None):
+                if isinstance(vif, dict) and vif.get("vifname") and str(vif.get("state") or "").lower() == "up":
+                    names.append(vif["vifname"])
+        signals = {}
+        for name in dict.fromkeys(names + list(self.DEFAULT_IFNAMES)):
+            assoc = self.call("iwinfo", "assoclist", {"device": name})
+            for sta in (assoc.get("results") or []) if isinstance(assoc, dict) else []:
+                if isinstance(sta, dict) and sta.get("mac") and isinstance(sta.get("signal"), (int, float)) and sta["signal"] < 0:
+                    signals[sta["mac"].upper()] = int(sta["signal"])
+        if not signals:  # dự phòng: thống kê client riêng của Viettel
+            _find_signals(self.call("viettel.wlan", "client_stats"), signals)
+        if not self._logged_signal_source:
+            log(f"RSSI: đọc được {len(signals)} client (interface thử: {', '.join(dict.fromkeys(names + list(self.DEFAULT_IFNAMES)))})")
+            self._logged_signal_source = True
+        return signals
+
+
+MAC_RE = re.compile(r"^[0-9A-Fa-f]{2}([:-][0-9A-Fa-f]{2}){5}$")
+SIGNAL_KEYS = ("rssi", "signal", "avgrssi", "rssi0", "lastrssi")
+
+
+def _find_signals(o, out):
+    """Tìm các cặp (MAC, RSSI âm) trong cấu trúc JSON bất kỳ."""
+    if isinstance(o, dict):
+        mac = next((v for v in o.values() if isinstance(v, str) and MAC_RE.match(v)), None)
+        if mac:
+            for k, v in o.items():
+                if k.lower().replace("_", "").replace(" ", "") in SIGNAL_KEYS:
+                    try:
+                        val = int(float(str(v).split()[0]))
+                    except (ValueError, IndexError):
+                        continue
+                    if val < 0:
+                        out[mac.replace("-", ":").upper()] = val
+                        break
+        for k, v in o.items():
+            if isinstance(k, str) and MAC_RE.match(k) and isinstance(v, dict):
+                v = {**v, "_mac": k}
+            _find_signals(v, out)
+    elif isinstance(o, list):
+        for v in o:
+            _find_signals(v, out)
+
+
+def _values(o):
+    if isinstance(o, dict):
+        return list(o.values())
+    if isinstance(o, list):
+        return o
+    return []
 
 
 class Server:
@@ -192,7 +250,9 @@ def main():
                     item = {"mode": "UNREACHABLE", "message": f"Agent không kết nối được {host}: {e}"}
                     meshes.pop(host, None)
                 except Exception as e:  # noqa: BLE001
-                    item = {"mode": "ERROR", "message": str(e)}
+                    import traceback
+                    traceback.print_exc()
+                    item = {"mode": "ERROR", "message": f"Agent lỗi khi đọc {host}: {e!r}"}
                     meshes.pop(host, None)
                 item.update({"mac": mac, "host": host})
                 devices.append(item)

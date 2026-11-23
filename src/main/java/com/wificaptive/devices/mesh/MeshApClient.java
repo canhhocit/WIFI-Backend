@@ -120,25 +120,33 @@ public class MeshApClient {
         return MeshApParser.parse(topology, systemInfo, board, hostHints, signals);
     }
 
+    /** Firmware V1.6.6_VN trả "vifs": null cho radio 5GHz -> luôn thử thêm tên interface chuẩn của MT7981. */
+    private static final List<String> DEFAULT_IFNAMES = List.of("ra0", "rax0");
+
     /** RSSI theo MAC từ iwinfo.assoclist trên các interface Wi-Fi đang bật (best-effort). */
     private Map<String, Integer> readSignals(String host, String sid) {
         Map<String, Integer> out = new HashMap<>();
+        java.util.LinkedHashSet<String> ifnames = new java.util.LinkedHashSet<>();
         JsonNode wifiInfo = callOptional(host, sid, "dat2wifi", "getWifiInfo", Map.of());
-        if (wifiInfo == null) return out;
-        wifiInfo.fields().forEachRemaining(radioEntry -> {
-            JsonNode vifs = radioEntry.getValue().path("vifs");
-            vifs.fields().forEachRemaining(vifEntry -> {
-                JsonNode vif = vifEntry.getValue();
-                String ifname = vif.path("vifname").asText("");
-                if (ifname.isBlank() || !"up".equalsIgnoreCase(vif.path("state").asText(""))) return;
-                JsonNode assoc = callOptional(host, sid, "iwinfo", "assoclist", Map.of("device", ifname));
-                if (assoc == null) return;
-                for (JsonNode sta : assoc.path("results")) {
-                    String mac = MeshApParser.upperMac(sta.path("mac").asText(null));
-                    if (mac != null && sta.has("signal")) out.put(mac, sta.path("signal").asInt());
+        if (wifiInfo != null) {
+            wifiInfo.fields().forEachRemaining(radioEntry -> radioEntry.getValue().path("vifs").fields()
+                    .forEachRemaining(vifEntry -> {
+                        JsonNode vif = vifEntry.getValue();
+                        String ifname = vif.path("vifname").asText("");
+                        if (!ifname.isBlank() && "up".equalsIgnoreCase(vif.path("state").asText(""))) ifnames.add(ifname);
+                    }));
+        }
+        ifnames.addAll(DEFAULT_IFNAMES);
+        for (String ifname : ifnames) {
+            JsonNode assoc = callOptional(host, sid, "iwinfo", "assoclist", Map.of("device", ifname));
+            if (assoc == null) continue;
+            for (JsonNode sta : assoc.path("results")) {
+                String mac = MeshApParser.upperMac(sta.path("mac").asText(null));
+                if (mac != null && sta.path("signal").isNumber() && sta.path("signal").asInt() < 0) {
+                    out.put(mac, sta.path("signal").asInt());
                 }
-            });
-        });
+            }
+        }
         return out;
     }
 
