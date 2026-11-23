@@ -48,7 +48,11 @@ public class MeshApMonitorService {
     private final boolean rotateFactoryPassword;
 
     private final Map<Long, MeshApSnapshotDto> snapshots = new ConcurrentHashMap<>();
+    /** Thời điểm nhận dữ liệu gần nhất từ agent thu thập tại chỗ (AP không đọc trực tiếp từ máy chủ). */
+    private final Map<Long, Instant> agentReceivedAt = new ConcurrentHashMap<>();
+    private final java.time.Duration agentStaleAfter;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public MeshApMonitorService(MeshApClient client,
                                 NetworkDeviceRepository deviceRepository,
                                 IncidentTicketService incidentTicketService,
@@ -56,7 +60,8 @@ public class MeshApMonitorService {
                                 @Value("${app.mesh-ap.enabled:false}") boolean enabled,
                                 @Value("${app.mesh-ap.username:admin}") String username,
                                 @Value("${app.mesh-ap.managed-password:}") String managedPassword,
-                                @Value("${app.mesh-ap.rotate-factory-password:true}") boolean rotateFactoryPassword) {
+                                @Value("${app.mesh-ap.rotate-factory-password:true}") boolean rotateFactoryPassword,
+                                @Value("${app.mesh-ap.agent-stale-after-ms:300000}") long agentStaleAfterMs) {
         this.client = client;
         this.deviceRepository = deviceRepository;
         this.incidentTicketService = incidentTicketService;
@@ -65,6 +70,20 @@ public class MeshApMonitorService {
         this.username = username;
         this.managedPassword = managedPassword;
         this.rotateFactoryPassword = rotateFactoryPassword;
+        this.agentStaleAfter = java.time.Duration.ofMillis(agentStaleAfterMs);
+    }
+
+    public MeshApMonitorService(MeshApClient client, NetworkDeviceRepository deviceRepository,
+                                IncidentTicketService incidentTicketService, PlatformTransactionManager transactionManager,
+                                boolean enabled, String username, String managedPassword, boolean rotateFactoryPassword) {
+        this(client, deviceRepository, incidentTicketService, transactionManager, enabled, username, managedPassword,
+                rotateFactoryPassword, 300000L);
+    }
+
+    /** AP đang được agent tại chỗ báo cáo (dữ liệu còn mới). */
+    private boolean isAgentFed(Long deviceId) {
+        Instant at = agentReceivedAt.get(deviceId);
+        return at != null && at.isAfter(Instant.now().minus(agentStaleAfter));
     }
 
     public boolean isEnabled() {
@@ -83,7 +102,8 @@ public class MeshApMonitorService {
 
     /** Nguồn dữ liệu trạng thái của AP để giao diện hiển thị đúng (không coi số liệu tĩnh là trực tiếp). */
     public String monitoringSource(NetworkDevice d) {
-        if (!isMeshAp(d) || !enabled) return SOURCE_NOT_MONITORED;
+        if (!isMeshAp(d)) return SOURCE_NOT_MONITORED;
+        if (!enabled && !agentReceivedAt.containsKey(d.getId())) return SOURCE_NOT_MONITORED;
         MeshApSnapshotDto s = snapshots.get(d.getId());
         if (s == null) return "MESH_PENDING";
         return s.isLive() ? SOURCE_MESH_LIVE : "MESH_" + s.monitoringMode();
@@ -97,7 +117,9 @@ public class MeshApMonitorService {
      * Lấy ảnh chụp trạng thái mesh; {@code refresh=true} đọc lại ngay từ thiết bị.
      */
     public MeshApSnapshotDto getSnapshot(NetworkDevice device, boolean refresh) {
-        if (!enabled) {
+        if (!enabled || agentReceivedAt.containsKey(device.getId())) {
+            MeshApSnapshotDto fromAgent = agentReceivedAt.containsKey(device.getId()) ? snapshots.get(device.getId()) : null;
+            if (fromAgent != null) return fromAgent;
             return MeshApSnapshotDto.status(device.getId(), device.getIpAddress(), "DISABLED",
                     "Máy chủ này chưa bật giám sát mesh trực tiếp (cần đường mạng VPN/LAN tới điểm phát và app.mesh-ap.enabled=true).",
                     null);
@@ -254,11 +276,57 @@ public class MeshApMonitorService {
         List<NetworkDevice> aps = deviceRepository.findAll().stream()
                 .filter(MeshApMonitorService::isMeshAp)
                 .filter(d -> !"DECOMMISSIONED".equalsIgnoreCase(d.getStatus()))
+                .filter(d -> !isAgentFed(d.getId()))
                 .toList();
         int live = 0;
         for (NetworkDevice ap : aps) {
             if (refresh(ap).isLive()) live++;
         }
         log.info("[MeshAp] Quét {} mesh AP: {} đọc được, {} lỗi/mất kết nối", aps.size(), live, aps.size() - live);
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // Agent thu thập tại chỗ: máy trong LAN điểm phát đọc mesh rồi đẩy lên (máy chủ không vào được LAN).
+
+    /** Danh sách mesh AP có IP quản trị để agent biết cần đọc thiết bị nào. */
+    public List<NetworkDevice> agentTargets() {
+        return deviceRepository.findAll().stream()
+                .filter(MeshApMonitorService::isMeshAp)
+                .filter(d -> !"DECOMMISSIONED".equalsIgnoreCase(d.getStatus()))
+                .filter(d -> StringUtils.hasText(d.getIpAddress()))
+                .toList();
+    }
+
+    /** Nhận ảnh chụp do agent gửi lên và cập nhật thiết bị như khi máy chủ tự đọc. */
+    public MeshApSnapshotDto ingestFromAgent(NetworkDevice device, MeshApSnapshotDto snapshot) {
+        Long id = device.getId();
+        MeshApSnapshotDto previous = snapshots.get(id);
+        MeshApSnapshotDto s = snapshot;
+        if (!s.isLive() && s.lastSuccessAt() == null && previous != null && previous.lastSuccessAt() != null) {
+            s = MeshApSnapshotDto.status(id, s.host(), s.monitoringMode(), s.message(), previous.lastSuccessAt());
+        }
+        s = s.withDevice(id, s.host() != null ? s.host() : device.getIpAddress())
+                .withCredentialState(device.getMeshCredentialState());
+        snapshots.put(id, s);
+        agentReceivedAt.put(id, Instant.now());
+        final MeshApSnapshotDto result = s;
+        tx.executeWithoutResult(st -> applyToDevice(id, result, null, false));
+        return s;
+    }
+
+    /** Agent ngừng gửi quá lâu -> coi như mất kết nối (agent hoặc đường truyền điểm phát gặp sự cố). */
+    @Scheduled(fixedDelay = 60000, initialDelay = 60000)
+    public void expireAgentSnapshots() {
+        Instant limit = Instant.now().minus(agentStaleAfter);
+        agentReceivedAt.forEach((id, at) -> {
+            if (at.isAfter(limit)) return;
+            MeshApSnapshotDto prev = snapshots.get(id);
+            if (prev != null && "UNREACHABLE".equals(prev.monitoringMode())) return;
+            MeshApSnapshotDto s = MeshApSnapshotDto.status(id, prev != null ? prev.host() : null, "UNREACHABLE",
+                    "Không nhận được dữ liệu từ agent tại điểm phát quá " + agentStaleAfter.toMinutes() + " phút",
+                    prev != null ? prev.lastSuccessAt() : null);
+            snapshots.put(id, s);
+            tx.executeWithoutResult(st -> applyToDevice(id, s, null, false));
+        });
     }
 }

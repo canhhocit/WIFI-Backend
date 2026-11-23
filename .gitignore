@@ -46,3 +46,6 @@ AGENTS.md
 ### Uploads ###
 uploads/
 
+
+# Token agent mesh (bí mật, chỉ để trên máy chạy agent)
+tools/mesh-agent/.agent-token

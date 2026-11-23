@@ -1,0 +1,144 @@
+package com.wificaptive.devices.mesh;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.wificaptive.devices.entity.NetworkDevice;
+import com.wificaptive.devices.repository.NetworkDeviceRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.util.StringUtils;
+import org.springframework.web.bind.annotation.*;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.time.Instant;
+import java.util.*;
+
+/**
+ * Điểm nhận dữ liệu từ agent thu thập đặt trong LAN của điểm phát.
+ *
+ * Máy chủ trung tâm thường không vào được LAN sau NAT của từng điểm, nên một agent tại chỗ đăng nhập
+ * mesh, đọc các lệnh ubus thô rồi gửi lên đây; máy chủ dùng cùng bộ phân tích {@link MeshApParser}.
+ *
+ * Xác thực bằng token agent: cấu hình chỉ lưu SHA-256 của token ({@code app.mesh-ap.agent-token-sha256}),
+ * không lưu token gốc. Để trống = tắt endpoint.
+ */
+@RestController
+@RequestMapping("/api/v1/agent/mesh")
+public class MeshAgentController {
+
+    private static final Logger log = LoggerFactory.getLogger(MeshAgentController.class);
+    static final String TOKEN_HEADER = "X-Agent-Token";
+
+    private final MeshApMonitorService monitor;
+    private final NetworkDeviceRepository repo;
+    private final ObjectMapper om;
+    private final byte[] expectedHash;
+
+    public MeshAgentController(MeshApMonitorService monitor, NetworkDeviceRepository repo, ObjectMapper om,
+                               @Value("${app.mesh-ap.agent-token-sha256:}") String tokenSha256) {
+        this.monitor = monitor;
+        this.repo = repo;
+        this.om = om;
+        this.expectedHash = parseHex(tokenSha256);
+    }
+
+    @GetMapping("/targets")
+    public ResponseEntity<?> targets(@RequestHeader(value = TOKEN_HEADER, required = false) String token) {
+        if (!authorized(token)) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (NetworkDevice d : monitor.agentTargets()) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("mac", d.getMacAddress());
+            m.put("host", d.getIpAddress().trim());
+            out.add(m);
+        }
+        return ResponseEntity.ok(Map.of("targets", out));
+    }
+
+    /**
+     * Body: {"agentId": "...", "devices": [{"mac", "host", "mode": "LIVE|UNREACHABLE|AUTH_FAILED|ERROR",
+     * "message", "topology": chuỗi luaTopologyInfo, "systemInfo", "board", "hostHints", "signals": {MAC: dBm}}]}
+     */
+    @PostMapping("/snapshots")
+    public ResponseEntity<?> snapshots(@RequestHeader(value = TOKEN_HEADER, required = false) String token,
+                                       @RequestBody JsonNode body) {
+        if (!authorized(token)) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        String agentId = body.path("agentId").asText("agent");
+        int accepted = 0;
+        List<String> unknown = new ArrayList<>();
+        for (JsonNode item : body.path("devices")) {
+            String mac = normalizeMac(item.path("mac").asText(""));
+            Optional<NetworkDevice> dev = mac == null ? Optional.empty() : repo.findByMacAddress(mac);
+            if (dev.isEmpty() || !MeshApMonitorService.isMeshAp(dev.get())) {
+                unknown.add(item.path("mac").asText(""));
+                continue;
+            }
+            monitor.ingestFromAgent(dev.get(), toSnapshot(item));
+            accepted++;
+        }
+        log.info("[MeshAgent] {} gửi {} AP ({} không khớp)", agentId, accepted, unknown.size());
+        return ResponseEntity.ok(Map.of("accepted", accepted, "unknown", unknown));
+    }
+
+    MeshApSnapshotDto toSnapshot(JsonNode item) {
+        String host = item.path("host").asText(null);
+        String mode = item.path("mode").asText("LIVE").toUpperCase(Locale.ROOT);
+        if (!"LIVE".equals(mode)) {
+            if (!Set.of("UNREACHABLE", "AUTH_FAILED", "ERROR").contains(mode)) mode = "ERROR";
+            return MeshApSnapshotDto.status(null, host, mode, item.path("message").asText("Agent không đọc được thiết bị"), null);
+        }
+        try {
+            JsonNode topoNode = item.path("topology");
+            JsonNode topology = topoNode.isTextual() ? om.readTree(topoNode.asText()) : topoNode;
+            Map<String, Integer> signals = new HashMap<>();
+            item.path("signals").fields().forEachRemaining(e -> {
+                String m = normalizeMac(e.getKey());
+                if (m != null && e.getValue().isNumber()) signals.put(m, e.getValue().asInt());
+            });
+            MeshApSnapshotDto s = MeshApParser.parse(topology, nullIfMissing(item.path("systemInfo")),
+                    nullIfMissing(item.path("board")), nullIfMissing(item.path("hostHints")), signals);
+            return s.withDevice(null, host);
+        } catch (Exception e) {
+            return MeshApSnapshotDto.status(null, host, "ERROR", "Dữ liệu agent không hợp lệ: " + e.getMessage(), null);
+        }
+    }
+
+    private static JsonNode nullIfMissing(JsonNode n) {
+        return n == null || n.isMissingNode() || n.isNull() ? null : n;
+    }
+
+    private boolean authorized(String token) {
+        if (expectedHash == null || !StringUtils.hasText(token)) return false;
+        try {
+            byte[] got = MessageDigest.getInstance("SHA-256").digest(token.trim().getBytes(StandardCharsets.UTF_8));
+            return MessageDigest.isEqual(got, expectedHash);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static byte[] parseHex(String hex) {
+        if (!StringUtils.hasText(hex)) return null;
+        String h = hex.trim().toLowerCase(Locale.ROOT);
+        if (!h.matches("[0-9a-f]{64}")) {
+            log.warn("[MeshAgent] app.mesh-ap.agent-token-sha256 không phải SHA-256 hex -> tắt endpoint agent");
+            return null;
+        }
+        return HexFormat.of().parseHex(h);
+    }
+
+    static String normalizeMac(String raw) {
+        String hex = raw == null ? "" : raw.replaceAll("[^0-9A-Fa-f]", "").toUpperCase(Locale.ROOT);
+        if (hex.length() != 12) return null;
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 12; i += 2) {
+            if (i > 0) sb.append(':');
+            sb.append(hex, i, i + 2);
+        }
+        return sb.toString();
+    }
+}

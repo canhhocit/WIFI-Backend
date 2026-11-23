@@ -49,6 +49,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/portal/**", "/api/v1/portal/**").permitAll()
                         // Public Grandstream GDMS / GWN Cloud Webhooks
                         .requestMatchers("/api/v1/gateway/gwn/**", "/api/v1/webhooks/**").permitAll()
+                        // Agent thu thập mesh tại điểm phát (tự xác thực bằng token agent)
+                        .requestMatchers("/api/v1/agent/mesh/**").permitAll()
                         // Public Static Uploads (Banners/Images for guests & admin)
                         .requestMatchers("/uploads/**").permitAll()
                         // Public Auth Endpoint

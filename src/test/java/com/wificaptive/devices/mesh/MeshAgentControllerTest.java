@@ -1,0 +1,127 @@
+package com.wificaptive.devices.mesh;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.wificaptive.devices.entity.NetworkDevice;
+import com.wificaptive.devices.repository.NetworkDeviceRepository;
+import com.wificaptive.incidents.service.IncidentTicketService;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.SimpleTransactionStatus;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+class MeshAgentControllerTest {
+
+    private static final String TOKEN = "agent-token-for-test";
+    private final ObjectMapper om = new ObjectMapper().findAndRegisterModules();
+    private NetworkDeviceRepository repo;
+    private MeshApMonitorService monitor;
+    private MeshAgentController controller;
+    private NetworkDevice device;
+
+    @BeforeEach
+    void setUp() throws Exception {
+        repo = mock(NetworkDeviceRepository.class);
+        PlatformTransactionManager txm = mock(PlatformTransactionManager.class);
+        when(txm.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
+        // Máy chủ KHÔNG bật đọc trực tiếp (giống SIT) — dữ liệu chỉ đến từ agent
+        monitor = new MeshApMonitorService(mock(MeshApClient.class), repo, mock(IncidentTicketService.class), txm,
+                false, "admin", "", true);
+        String hash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(TOKEN.getBytes(StandardCharsets.UTF_8)));
+        controller = new MeshAgentController(monitor, repo, om, hash);
+
+        device = new NetworkDevice();
+        device.setId(5L);
+        device.setDeviceType("ACCESS_POINT");
+        device.setModel("vAP-32X6V1");
+        device.setMacAddress("24:0B:2B:47:2A:22");
+        device.setIpAddress("192.168.80.111");
+        device.setStatus("UNKNOWN");
+        when(repo.findByMacAddress("24:0B:2B:47:2A:22")).thenReturn(Optional.of(device));
+        when(repo.findById(5L)).thenReturn(Optional.of(device));
+        when(repo.findAll()).thenReturn(List.of(device));
+    }
+
+    private JsonNode body(String json) throws Exception {
+        return om.readTree(json);
+    }
+
+    @Test
+    void rejectsMissingOrWrongToken() throws Exception {
+        assertEquals(401, controller.targets(null).getStatusCode().value());
+        assertEquals(401, controller.snapshots("wrong", body("{\"devices\":[]}")).getStatusCode().value());
+        MeshAgentController disabled = new MeshAgentController(monitor, repo, om, "");
+        assertEquals(401, disabled.targets(TOKEN).getStatusCode().value());
+    }
+
+    @Test
+    void listsTargets() {
+        ResponseEntity<?> r = controller.targets(TOKEN);
+        assertEquals(200, r.getStatusCode().value());
+        assertTrue(r.getBody().toString().contains("192.168.80.111"));
+    }
+
+    @Test
+    void liveSnapshotFromAgentMakesApOnlineEvenWhenDirectPollingDisabled() throws Exception {
+        String topo = om.writeValueAsString("{\"topology information\":[{\"Serial number\":\"VTGRB0000TEST\","
+                + "\"Firmware version\":\"V1.6.6_VN\",\"Product class\":\"vAP-32X6V1\",\"Radio Info\":[{\"channel\":108,"
+                + "\"BSSINFO\":[{\"BSSID\":\"26:0b:2b:47:2a:23\",\"SSID\":\"VIETTEL_TEST\",\"Security\":\"0020\",\"Hidden\":0,"
+                + "\"connected sta info\":[{\"STA MAC address\":\"a0:51:0b:30:8c:98\",\"BH STA\":\"No\",\"Medium\":\"5G\","
+                + "\"uplink speed\":\"433\"}]}]}]}]}");
+        String json = "{\"agentId\":\"lan-demo\",\"devices\":[{\"mac\":\"240b2b472a22\",\"host\":\"192.168.80.111\",\"mode\":\"LIVE\","
+                + "\"topology\":" + topo + ",\"systemInfo\":{\"uptime\":100,\"memory\":{\"total\":1000,\"available\":250}},"
+                + "\"signals\":{\"a0:51:0b:30:8c:98\":-41}},{\"mac\":\"11:22:33:44:55:66\"}]}";
+
+        ResponseEntity<?> r = controller.snapshots(TOKEN, body(json));
+
+        Map<?, ?> res = (Map<?, ?>) r.getBody();
+        assertEquals(1, res.get("accepted"));
+        assertEquals(List.of("11:22:33:44:55:66"), res.get("unknown"));
+        assertEquals("ONLINE", device.getStatus());
+        assertEquals("V1.6.6_VN", device.getFirmwareVersion());
+        assertEquals(MeshApMonitorService.SOURCE_MESH_LIVE, monitor.monitoringSource(device));
+        MeshApSnapshotDto s = monitor.getSnapshot(device, true);
+        assertTrue(s.isLive());
+        assertEquals(1, s.clients().size());
+        assertEquals(-41, s.clients().get(0).rssi());
+    }
+
+    @Test
+    void agentReportedUnreachableGoesOffline() throws Exception {
+        device.setStatus("ONLINE");
+        controller.snapshots(TOKEN, body("{\"devices\":[{\"mac\":\"24:0B:2B:47:2A:22\",\"mode\":\"UNREACHABLE\",\"message\":\"timeout\"}]}"));
+        assertEquals("OFFLINE", device.getStatus());
+        assertEquals("MESH_UNREACHABLE", monitor.monitoringSource(device));
+    }
+
+    @Test
+    void staleAgentDataExpiresToOffline() throws Exception {
+        MeshApMonitorService fast = new MeshApMonitorService(mock(MeshApClient.class), repo, mock(IncidentTicketService.class),
+                mockTx(), false, "admin", "", true, 0L);
+        MeshAgentController c = new MeshAgentController(fast, repo, om,
+                HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(TOKEN.getBytes(StandardCharsets.UTF_8))));
+        c.snapshots(TOKEN, body("{\"devices\":[{\"mac\":\"24:0B:2B:47:2A:22\",\"mode\":\"LIVE\",\"topology\":\"{}\"}]}"));
+        assertEquals("ONLINE", device.getStatus());
+        Thread.sleep(5);
+        fast.expireAgentSnapshots();
+        assertEquals("OFFLINE", device.getStatus());
+    }
+
+    private static PlatformTransactionManager mockTx() {
+        PlatformTransactionManager txm = mock(PlatformTransactionManager.class);
+        when(txm.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
+        return txm;
+    }
+}
