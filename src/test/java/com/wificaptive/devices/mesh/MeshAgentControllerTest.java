@@ -99,6 +99,27 @@ class MeshAgentControllerTest {
     }
 
     @Test
+    void acceptsRawPayloadFromScriptRunningOnMeshAndMatchesByHostWhenMacDiffers() throws Exception {
+        // Script trên mesh gửi nguyên getTopologyDump + iwinfo.assoclist theo interface; MAC br-lan có thể khác MAC khai báo
+        String topoDump = om.writeValueAsString(om.createObjectNode().put("status", "SUCCESS").put("luaTopologyInfo",
+                "{\"topology information\":[{\"Serial number\":\"VTGRB0000TEST\",\"Firmware version\":\"V1.6.6_VN\","
+                        + "\"Product class\":\"vAP-32X6V1\",\"Radio Info\":[{\"channel\":108,\"BSSINFO\":[{\"BSSID\":\"26:0b:2b:47:2a:23\","
+                        + "\"SSID\":\"VIETTEL_TEST\",\"Security\":\"0001\",\"Hidden\":0,\"connected sta info\":[{\"STA MAC address\":"
+                        + "\"a0:51:0b:30:8c:98\",\"BH STA\":\"No\",\"Medium\":\"5G\",\"uplink speed\":\"433\"}]}]}]}]}"));
+        String json = "{\"agentId\":\"mesh-24:0b:2b:47:2a:21\",\"devices\":[{\"mac\":\"24:0b:2b:47:2a:21\",\"host\":\"192.168.80.111\","
+                + "\"mode\":\"LIVE\",\"topology\":" + topoDump + ",\"systemInfo\":{\"uptime\":5},"
+                + "\"assoc\":{\"ra0\":{\"results\":[]},\"rax0\":{\"results\":[{\"mac\":\"A0:51:0B:30:8C:98\",\"signal\":-54}]}}}]}";
+
+        Map<?, ?> res = (Map<?, ?>) controller.snapshots(TOKEN, body(json)).getBody();
+
+        assertEquals(1, res.get("accepted"));
+        assertEquals("ONLINE", device.getStatus());
+        MeshApSnapshotDto s = monitor.getSnapshot(device, false);
+        assertEquals(-54, s.clients().get(0).rssi());
+        assertTrue(s.message().contains("mesh-24:0b:2b:47:2a:21"));
+    }
+
+    @Test
     void agentReportedUnreachableGoesOffline() throws Exception {
         device.setStatus("ONLINE");
         controller.snapshots(TOKEN, body("{\"devices\":[{\"mac\":\"24:0B:2B:47:2A:22\",\"mode\":\"UNREACHABLE\",\"message\":\"timeout\"}]}"));

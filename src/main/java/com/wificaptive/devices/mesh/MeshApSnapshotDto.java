@@ -69,6 +69,12 @@ public record MeshApSnapshotDto(
                 memoryUsagePercent, loadAverage1m, radios, clients, credentialState);
     }
 
+    public MeshApSnapshotDto withMessage(String msg) {
+        return new MeshApSnapshotDto(deviceId, host, monitoringMode, msg, fetchedAt, lastSuccessAt,
+                serialNumber, model, firmwareVersion, hostname, osRelease, uptimeSeconds,
+                memoryUsagePercent, loadAverage1m, radios, clients, credentialState);
+    }
+
     public MeshApSnapshotDto withCredentialState(String state) {
         return new MeshApSnapshotDto(deviceId, host, monitoringMode, message, fetchedAt, lastSuccessAt,
                 serialNumber, model, firmwareVersion, hostname, osRelease, uptimeSeconds,

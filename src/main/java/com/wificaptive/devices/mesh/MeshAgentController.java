@@ -71,17 +71,41 @@ public class MeshAgentController {
         int accepted = 0;
         List<String> unknown = new ArrayList<>();
         for (JsonNode item : body.path("devices")) {
-            String mac = normalizeMac(item.path("mac").asText(""));
-            Optional<NetworkDevice> dev = mac == null ? Optional.empty() : repo.findByMacAddress(mac);
-            if (dev.isEmpty() || !MeshApMonitorService.isMeshAp(dev.get())) {
+            MeshApSnapshotDto snapshot = toSnapshot(item);
+            Optional<NetworkDevice> dev = findDevice(item, snapshot);
+            if (dev.isEmpty()) {
                 unknown.add(item.path("mac").asText(""));
                 continue;
             }
-            monitor.ingestFromAgent(dev.get(), toSnapshot(item));
+            if (snapshot.isLive()) {
+                snapshot = snapshot.withMessage("Mesh đọc thành công qua agent " + agentId);
+            }
+            monitor.ingestFromAgent(dev.get(), snapshot);
             accepted++;
         }
         log.info("[MeshAgent] {} gửi {} AP ({} không khớp)", agentId, accepted, unknown.size());
         return ResponseEntity.ok(Map.of("accepted", accepted, "unknown", unknown));
+    }
+
+    /**
+     * Khớp thiết bị: MAC (khai báo trong danh sách bàn giao) -> S/N mesh tự báo -> IP quản trị
+     * (chỉ khi duy nhất một mesh AP dùng IP đó, vì các điểm có thể trùng dải LAN).
+     */
+    private Optional<NetworkDevice> findDevice(JsonNode item, MeshApSnapshotDto snapshot) {
+        String mac = normalizeMac(item.path("mac").asText(""));
+        Optional<NetworkDevice> dev = mac == null ? Optional.empty() : repo.findByMacAddress(mac);
+        if (dev.isEmpty() && StringUtils.hasText(snapshot.serialNumber())) {
+            dev = repo.findBySerialNumber(snapshot.serialNumber().trim());
+        }
+        if (dev.isEmpty()) {
+            String host = item.path("host").asText("").trim();
+            if (!host.isEmpty()) {
+                List<NetworkDevice> sameIp = monitor.agentTargets().stream()
+                        .filter(d -> host.equals(d.getIpAddress().trim())).toList();
+                if (sameIp.size() == 1) dev = Optional.of(sameIp.get(0));
+            }
+        }
+        return dev.filter(MeshApMonitorService::isMeshAp);
     }
 
     MeshApSnapshotDto toSnapshot(JsonNode item) {
@@ -93,11 +117,24 @@ public class MeshAgentController {
         }
         try {
             JsonNode topoNode = item.path("topology");
+            // Agent trên PC gửi chuỗi luaTopologyInfo; script chạy trên mesh gửi nguyên kết quả getTopologyDump
+            if (topoNode.isObject() && topoNode.path("luaTopologyInfo").isTextual()) {
+                topoNode = topoNode.path("luaTopologyInfo");
+            }
             JsonNode topology = topoNode.isTextual() ? om.readTree(topoNode.asText()) : topoNode;
             Map<String, Integer> signals = new HashMap<>();
             item.path("signals").fields().forEachRemaining(e -> {
                 String m = normalizeMac(e.getKey());
                 if (m != null && e.getValue().isNumber()) signals.put(m, e.getValue().asInt());
+            });
+            // Kết quả iwinfo.assoclist thô theo interface: {"rax0": {"results": [{"mac","signal"}]}}
+            item.path("assoc").fields().forEachRemaining(e -> {
+                for (JsonNode sta : e.getValue().path("results")) {
+                    String m = normalizeMac(sta.path("mac").asText(""));
+                    if (m != null && sta.path("signal").isNumber() && sta.path("signal").asInt() < 0) {
+                        signals.putIfAbsent(m, sta.path("signal").asInt());
+                    }
+                }
             });
             MeshApSnapshotDto s = MeshApParser.parse(topology, nullIfMissing(item.path("systemInfo")),
                     nullIfMissing(item.path("board")), nullIfMissing(item.path("hostHints")), signals);

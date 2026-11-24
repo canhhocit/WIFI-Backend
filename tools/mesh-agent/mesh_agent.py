@@ -117,6 +117,8 @@ class Mesh:
         except Exception as e:  # noqa: BLE001
             log("Bỏ qua RSSI:", repr(e))
         raw_topo = topo.get("luaTopologyInfo") if isinstance(topo, dict) else None
+        if isinstance(raw_topo, str):  # không gửi mật khẩu Wi-Fi lên máy chủ
+            raw_topo = re.sub(r'"Pass-phrase"\s*:\s*"(?:[^"\\]|\\.)*"', '"Pass-phrase":""', raw_topo)
         return {
             "mode": "LIVE",
             "topology": raw_topo or "{}",
