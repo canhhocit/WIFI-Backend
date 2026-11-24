@@ -1,6 +1,7 @@
 package com.wificaptive.portal.template.controller;
 
 import com.wificaptive.common.dto.ApiResponse;
+import com.wificaptive.portal.service.PortalService;
 import com.wificaptive.portal.template.dto.PortalTemplateDto;
 import com.wificaptive.portal.template.dto.PortalPreviewLinkRequest;
 import com.wificaptive.portal.template.dto.PortalPreviewLinkResponse;
@@ -16,10 +17,15 @@ public class PortalTemplateController {
 
     private final PortalTemplateService service;
     private final PortalPreviewTokenService previewTokenService;
+    private final PortalService portalService;
 
-    public PortalTemplateController(PortalTemplateService service, PortalPreviewTokenService previewTokenService) {
+    public PortalTemplateController(
+            PortalTemplateService service,
+            PortalPreviewTokenService previewTokenService,
+            PortalService portalService) {
         this.service = service;
         this.previewTokenService = previewTokenService;
+        this.portalService = portalService;
     }
 
     @GetMapping
@@ -34,7 +40,9 @@ public class PortalTemplateController {
 
     @PostMapping
     public ApiResponse<PortalTemplateDto> saveTemplate(@RequestBody PortalTemplateDto dto) {
-        return ApiResponse.ok("Lưu cấu hình giao diện Cổng chào thành công", service.saveOrUpdate(dto));
+        PortalTemplateDto saved = service.saveOrUpdate(dto);
+        portalService.invalidatePortalCache();
+        return ApiResponse.ok("Lưu cấu hình giao diện Cổng chào thành công", saved);
     }
 
     @GetMapping("/{id}/versions")
@@ -44,7 +52,9 @@ public class PortalTemplateController {
 
     @PostMapping("/{id}/rollback/{version}")
     public ApiResponse<PortalTemplateDto> rollbackVersion(@PathVariable Long id, @PathVariable Integer version) {
-        return ApiResponse.ok("Khôi phục phiên bản v" + version + " thành công", service.rollbackToVersion(id, version));
+        PortalTemplateDto restored = service.rollbackToVersion(id, version);
+        portalService.invalidatePortalCache();
+        return ApiResponse.ok("Khôi phục phiên bản v" + version + " thành công", restored);
     }
 
     @PostMapping("/preview-links")

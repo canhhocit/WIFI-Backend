@@ -71,4 +71,13 @@ class GwnCloudGatewayAdapterTest {
         assertFalse(statusConfigured.isSimulated());
         assertTrue(statusConfigured.getStatusMessage().contains("https://oc.gwn.cloud"));
     }
+
+    @Test
+    void testFetchDevicesAndClientsReturnEmptyWhenNoCredentials_noFakeFallback() {
+        ReflectionTestUtils.setField(adapter, "appId", "");
+        ReflectionTestUtils.setField(adapter, "appSecret", "");
+
+        assertTrue(adapter.fetchDevicesFromCloud().isEmpty());
+        assertTrue(adapter.getConnectedClientsFromCloud(null).isEmpty());
+    }
 }

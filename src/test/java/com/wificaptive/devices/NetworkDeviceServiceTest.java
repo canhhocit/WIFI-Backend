@@ -190,5 +190,46 @@ class NetworkDeviceServiceTest {
         verify(incidentTicketService).recordDeviceFailureIncident(eq(1L), eq(10L), any(), eq("00:1A:2B:3C:4D:5E"), any());
         verify(auditService).recordEvent(any(), any(), any(), any(), any(), any());
     }
+
+    @Test
+    void testSyncFromGrandstream_newDevices_classifiesRouterAndApWithoutDefaultLocation() {
+        GwnDeviceSyncDto routerDto = new GwnDeviceSyncDto(
+                "EC:74:D7:98:B0:42", "GWN7002", "GWN7002", "Grandstream",
+                "192.168.80.1", "ONLINE", "1.0.11.18", 10, 35, 1000L
+        );
+        GwnDeviceSyncDto apDto = new GwnDeviceSyncDto(
+                "C0:74:AD:11:22:33", "GWN7660", "GWN7660", "Grandstream",
+                "192.168.80.20", "ONLINE", "1.0.25.10", 8, 30, 1000L
+        );
+
+        when(gwnCloudGatewayAdapter.fetchDevicesFromCloud()).thenReturn(List.of(routerDto, apDto));
+        when(deviceRepository.findByMacAddress(any())).thenReturn(Optional.empty());
+        when(deviceRepository.findAll()).thenReturn(List.of());
+        when(deviceRepository.save(any(NetworkDevice.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        DeviceSyncSummaryDto summary = deviceService.syncFromGrandstream("admin");
+
+        assertThat(summary.getSyncedCount()).isEqualTo(2);
+        assertThat(summary.getCreatedCount()).isEqualTo(2);
+        assertThat(summary.getDevices()).hasSize(2);
+        assertThat(summary.getDevices().get(0).getDeviceType()).isEqualTo("ROUTER");
+        assertThat(summary.getDevices().get(0).getLocationId()).isNull();
+        assertThat(summary.getDevices().get(1).getDeviceType()).isEqualTo("ACCESS_POINT");
+        assertThat(summary.getDevices().get(1).getLocationId()).isNull();
+        verifyNoInteractions(locationRepository);
+    }
+
+    @Test
+    void testSyncFromGrandstream_whenCloudReturnsEmpty_returnsZeroSynced() {
+        when(gwnCloudGatewayAdapter.fetchDevicesFromCloud()).thenReturn(List.of());
+
+        DeviceSyncSummaryDto summary = deviceService.syncFromGrandstream("admin");
+
+        assertThat(summary.getSyncedCount()).isEqualTo(0);
+        assertThat(summary.getCreatedCount()).isEqualTo(0);
+        assertThat(summary.getUpdatedCount()).isEqualTo(0);
+        assertThat(summary.getMessage()).contains("0 thiết bị");
+        verifyNoInteractions(deviceRepository);
+    }
 }
 

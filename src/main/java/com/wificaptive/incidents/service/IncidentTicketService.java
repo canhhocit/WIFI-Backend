@@ -25,6 +25,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -86,10 +87,19 @@ public class IncidentTicketService {
         return IncidentTicketDto.from(t, locName, updates);
     }
 
+    private synchronized String generateUniqueTicketCode() {
+        String datePart = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+        String prefix = "SC-" + datePart + "-";
+        String candidate;
+        do {
+            candidate = String.format("%s%04d", prefix, COUNTER.incrementAndGet());
+        } while (ticketRepository.existsByTicketCode(candidate));
+        return candidate;
+    }
+
     @Transactional
     public IncidentTicketDto createTicket(CreateIncidentRequest req, String actor) {
-        String datePart = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-        String code = String.format("SC-%s-%04d", datePart, COUNTER.incrementAndGet());
+        String code = generateUniqueTicketCode();
 
         int slaHours = req.getSlaHours() != null ? req.getSlaHours() :
                 "CRITICAL".equalsIgnoreCase(req.getSeverity()) ? 4 :
@@ -118,8 +128,22 @@ public class IncidentTicketService {
                 "Khởi tạo phiếu báo sự cố với SLA: " + slaHours + " giờ"
         ));
 
+        // Nếu tạo từ phản ánh người dân, liên kết trực tiếp phản ánh đó vào phiếu sự cố này
+        if (req.getCitizenReportId() != null) {
+            citizenReportRepository.findById(req.getCitizenReportId()).ifPresent(report -> {
+                report.setIncidentTicketId(saved.getId());
+                report.setStatus("AGGREGATED_TO_INCIDENT");
+                citizenReportRepository.save(report);
+                log.info("Linked citizen report {} to incident ticket {}", report.getId(), saved.getTicketCode());
+            });
+        }
+
+        String locName = locationRepository.findById(saved.getLocationId())
+                .map(WifiLocation::getName)
+                .orElse("Điểm #" + saved.getLocationId());
+
         log.info("Created incident ticket {} for locationId: {}", saved.getTicketCode(), saved.getLocationId());
-        return IncidentTicketDto.from(saved);
+        return IncidentTicketDto.from(saved, locName, Collections.emptyList());
     }
 
     @Transactional

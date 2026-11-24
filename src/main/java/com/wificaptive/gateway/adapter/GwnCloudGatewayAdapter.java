@@ -419,21 +419,8 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
 
     public List<GwnDeviceSyncDto> fetchDevicesFromCloud() {
         if (!isLiveCredentialsConfigured()) {
-            log.info("[GWN Cloud Gateway] Fetching devices in STANDBY MODE (Simulated GWN7002)");
-            String routerMac = formatMacAddress(StringUtils.hasText(deviceMac) ? deviceMac : "EC:74:D7:98:B0:42");
-            GwnDeviceSyncDto simDev = new GwnDeviceSyncDto(
-                    routerMac,
-                    "Grandstream GWN7002 (Nhà văn hóa)",
-                    "GWN7002",
-                    "Grandstream",
-                    "192.168.80.1",
-                    "ONLINE",
-                    "1.0.11.18",
-                    14,
-                    46,
-                    268459L
-            );
-            return List.of(simDev);
+            log.warn("[GWN Cloud Gateway] Chưa cấu hình đủ appId/appSecret GWN Cloud, trả về 0 thiết bị.");
+            return List.of();
         }
 
         try {
@@ -462,21 +449,21 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
                         String rawMac = item.path("mac").asText("");
                         if (!StringUtils.hasText(rawMac)) continue;
                         String formattedMac = formatMacAddress(rawMac);
-                        String model = item.has("apType") ? item.path("apType").asText("GWN7002") : item.path("model").asText("GWN7002");
+                        String model = item.has("apType") ? item.path("apType").asText("") : item.path("model").asText("");
                         String name = item.path("name").asText("");
                         if (!StringUtils.hasText(name)) {
-                            name = "Grandstream " + model + " (Gateway Nhà văn hóa)";
+                            name = StringUtils.hasText(model) ? "Grandstream " + model : "Grandstream Device";
                         }
                         String vendor = "Grandstream";
-                        String ip = item.has("ipv4") && StringUtils.hasText(item.path("ipv4").asText()) 
-                                ? item.path("ipv4").asText() 
+                        String ip = item.has("ipv4") && StringUtils.hasText(item.path("ipv4").asText())
+                                ? item.path("ipv4").asText()
                                 : item.path("ip").asText("");
                         int statusVal = item.path("status").asInt(1);
                         String statusStr = (statusVal == 1 || "online".equalsIgnoreCase(item.path("status").asText(""))) ? "ONLINE" : "OFFLINE";
                         String firmware = item.has("versionFirmware") ? item.path("versionFirmware").asText("") : item.path("firmware").asText("");
-                        int cpu = item.path("cpu").asInt(item.path("cpuUsage").asInt(14));
-                        int memory = item.path("memory").asInt(item.path("memoryUsage").asInt(46));
-                        long uptime = item.has("upTime") ? item.path("upTime").asLong(3600L) : item.path("uptime").asLong(3600L);
+                        int cpu = item.path("cpu").asInt(item.path("cpuUsage").asInt(0));
+                        int memory = item.path("memory").asInt(item.path("memoryUsage").asInt(0));
+                        long uptime = item.has("upTime") ? item.path("upTime").asLong(0L) : item.path("uptime").asLong(0L);
 
                         list.add(new GwnDeviceSyncDto(formattedMac, name, model, vendor, ip, statusStr, firmware, cpu, memory, uptime));
                     }
@@ -485,16 +472,10 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
                 log.warn("[GWN Cloud Gateway] GWN Cloud ap/list responded with HTTP {}, retCode: {}, msg: {}", response.httpStatus, response.retCode, response.msg);
             }
 
-            if (list.isEmpty()) {
-                String routerMac = formatMacAddress(StringUtils.hasText(deviceMac) ? deviceMac : "EC:74:D7:98:B0:42");
-                list.add(new GwnDeviceSyncDto(routerMac, "Grandstream GWN7002 Gateway", "GWN7002", "Grandstream", "192.168.80.1", "ONLINE", "1.0.11.18", 14, 46, 268459L));
-            }
-
             return list;
         } catch (Exception e) {
             log.error("[GWN Cloud Gateway] Error fetching devices from GWN Cloud: {}", e.getMessage(), e);
-            String routerMac = formatMacAddress(StringUtils.hasText(deviceMac) ? deviceMac : "EC:74:D7:98:B0:42");
-            return List.of(new GwnDeviceSyncDto(routerMac, "Grandstream GWN7002 Gateway (Fallback)", "GWN7002", "Grandstream", "192.168.80.1", "ONLINE", "1.0.11.18", 14, 46, 268459L));
+            return List.of();
         }
     }
 
@@ -580,20 +561,27 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
 
             if (response.httpStatus >= 200 && response.httpStatus < 300 && response.retCode == 0) {
                 JsonNode root = objectMapper.readTree(response.rawBody);
-                JsonNode items = root.path("data").isArray() ? root.path("data") : root.path("data").path("list");
+                JsonNode dataNode = root.path("data");
+                JsonNode items = dataNode.isArray()
+                        ? dataNode
+                        : (dataNode.path("result").isArray() ? dataNode.path("result") : dataNode.path("list"));
                 if (items.isArray()) {
                     for (JsonNode item : items) {
-                        String mac = formatMacAddress(item.path("mac").asText(""));
-                        String ip = item.path("ip").asText("");
-                        String host = item.path("hostname").asText("Client");
+                        String rawClientMac = item.hasNonNull("clientId") ? item.path("clientId").asText("") : item.path("mac").asText("");
+                        String mac = formatMacAddress(rawClientMac);
+                        String ip = item.hasNonNull("ipv4") ? item.path("ipv4").asText("") : item.path("ip").asText("");
+                        String host = item.hasNonNull("name") && !item.path("name").asText("").isBlank()
+                                ? item.path("name").asText("")
+                                : item.path("hostname").asText("Client");
                         String ssid = item.path("ssid").asText("WiFi Cong Cong Hai Phong");
-                        String apMac = formatMacAddress(item.path("apMac").asText(""));
+                        String rawApMac = item.hasNonNull("apId") ? item.path("apId").asText("") : item.path("apMac").asText("");
+                        String apMac = formatMacAddress(rawApMac);
                         String apName = item.path("apName").asText("GWN AP");
-                        String band = item.path("radio").asInt(1) == 2 ? "5GHz" : "2.4GHz";
+                        String band = item.path("wired").asInt(0) == 1 ? "LAN/Mesh" : (item.path("radio").asInt(1) == 2 ? "5GHz" : "2.4GHz");
                         int rssi = item.path("rssi").asInt(-65);
                         long rx = item.path("rxBytes").asLong(0L);
                         long tx = item.path("txBytes").asLong(0L);
-                        long time = item.path("connectTime").asLong(1200L);
+                        long time = item.path("connectTime").asLong(0L);
                         clients.add(new com.wificaptive.gateway.dto.GwnClientDto(mac, ip, host, ssid, apMac, apName, band, rssi, rx, tx, time));
                     }
                 }
@@ -602,6 +590,79 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
         } catch (Exception e) {
             log.error("[GWN Cloud Gateway] Lỗi tải client từ cloud: {}", e.getMessage());
             return List.of();
+        }
+    }
+
+    /**
+     * Truy vấn trạng thái & lưu lượng thực tế của một client (cả Wi-Fi lẫn LAN/Mesh qua Router GWN7002)
+     * bằng endpoint chính thức /oapi/v1.0.0/client/info.
+     */
+    public com.wificaptive.gateway.dto.GwnClientLiveStatus fetchClientInfoFromCloud(String macAddress) {
+        String formattedMac = formatMacAddress(macAddress).toUpperCase();
+        if (!isLiveCredentialsConfigured()) {
+            return com.wificaptive.gateway.dto.GwnClientLiveStatus.unreachable(formattedMac);
+        }
+
+        try {
+            Map<String, Object> payload = new HashMap<>();
+            if (StringUtils.hasText(networkId)) {
+                try {
+                    payload.put("networkId", Long.parseLong(networkId.trim()));
+                } catch (NumberFormatException ignored) {}
+            }
+            payload.put("clientId", formattedMac);
+
+            GwnApiResponse response = executeGwnApi("v1.0.0/client/info", payload);
+
+            if (response.httpStatus >= 200 && response.httpStatus < 300) {
+                if (response.retCode == 40001) {
+                    return com.wificaptive.gateway.dto.GwnClientLiveStatus.notFound(formattedMac);
+                }
+                if (response.retCode == 0) {
+                    JsonNode data = objectMapper.readTree(response.rawBody).path("data");
+                    if (data.isObject()) {
+                        String host = data.path("name").asText("");
+                        String ipv4 = data.path("ipv4").asText("");
+                        String dhcpOs = data.path("dhcpOs").asText("");
+                        long rxBytes = data.path("rxBytes").asLong(0L);
+                        long txBytes = data.path("txBytes").asLong(0L);
+                        String apId = formatMacAddress(data.path("apId").asText(""));
+                        boolean wired = data.path("wired").asInt(0) == 1;
+                        Instant lastActiveAt = parseGwnLastActiveTime(data.path("lastactiveTime").asText(""));
+                        return new com.wificaptive.gateway.dto.GwnClientLiveStatus(
+                                true, true, false, formattedMac, host, ipv4, dhcpOs,
+                                rxBytes, txBytes, apId, lastActiveAt, wired
+                        );
+                    }
+                }
+            }
+
+            log.warn("[GWN Cloud Gateway] client/info trả về mã bất thường cho MAC {} (HTTP {}, retCode={}, msg={})",
+                    formattedMac, response.httpStatus, response.retCode, response.msg);
+            return com.wificaptive.gateway.dto.GwnClientLiveStatus.unreachable(formattedMac);
+        } catch (Exception e) {
+            log.warn("[GWN Cloud Gateway] Không thể truy vấn client/info cho MAC {}: {}", formattedMac, e.getMessage());
+            return com.wificaptive.gateway.dto.GwnClientLiveStatus.unreachable(formattedMac);
+        }
+    }
+
+    private Instant parseGwnLastActiveTime(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return null;
+        }
+        String trimmed = raw.trim();
+        try {
+            // GWN Cloud trả "yyyy-MM-dd HH:mm" hoặc "yyyy-MM-dd HH:mm:ss" theo UTC
+            java.time.format.DateTimeFormatter fmt = trimmed.length() > 16
+                    ? java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+                    : java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+            return java.time.LocalDateTime.parse(trimmed, fmt).toInstant(java.time.ZoneOffset.UTC);
+        } catch (Exception e) {
+            try {
+                return Instant.parse(trimmed);
+            } catch (Exception ignored) {
+                return null;
+            }
         }
     }
 

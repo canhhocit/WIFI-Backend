@@ -182,16 +182,22 @@ public class NetworkDeviceService {
         return NetworkDeviceDto.from(savedNewDev);
     }
 
+    private String resolveGrandstreamDeviceType(String model) {
+        if (model == null || model.isBlank()) {
+            return "ACCESS_POINT";
+        }
+        String upper = model.trim().toUpperCase();
+        if (upper.startsWith("GWN70") || upper.contains("ROUTER") || upper.contains("GATEWAY")) {
+            return "ROUTER";
+        }
+        return "ACCESS_POINT";
+    }
+
     public DeviceSyncSummaryDto syncFromGrandstream(String actorUsername) {
         List<GwnDeviceSyncDto> cloudDevices = gwnCloudGatewayAdapter.fetchDevicesFromCloud();
         int updatedCount = 0;
         int createdCount = 0;
         List<NetworkDeviceDto> resultList = new ArrayList<>();
-
-        WifiLocation defaultLoc = locationRepository.findAll().stream()
-                .filter(l -> !l.isDeleted())
-                .findFirst()
-                .orElse(null);
 
         for (GwnDeviceSyncDto cDev : cloudDevices) {
             String normMac = cDev.getMac().toUpperCase();
@@ -204,7 +210,6 @@ public class NetworkDeviceService {
                     .orElse(null);
 
             if (dev != null) {
-                String oldStatus = dev.getStatus();
                 dev.setStatus(cDev.getStatus());
                 if (cDev.getIp() != null && !cDev.getIp().isBlank()) {
                     dev.setIpAddress(cDev.getIp());
@@ -224,7 +229,7 @@ public class NetworkDeviceService {
                 if (dev.getVendor() == null || dev.getVendor().isBlank()) {
                     dev.setVendor("Grandstream");
                 }
-                if (dev.getModel() == null || dev.getModel().isBlank()) {
+                if ((dev.getModel() == null || dev.getModel().isBlank()) && cDev.getModel() != null && !cDev.getModel().isBlank()) {
                     dev.setModel(cDev.getModel());
                 }
                 dev.setLastSeenAt(Instant.now());
@@ -234,29 +239,29 @@ public class NetworkDeviceService {
 
                 // Tự động kích hoạt tạo Phiếu sự cố khi thiết bị báo OFFLINE
                 if ("OFFLINE".equalsIgnoreCase(cDev.getStatus())) {
-                    String locName = dev.getLocation() != null ? dev.getLocation().getName() : "Nhà văn hóa";
+                    String locName = dev.getLocation() != null ? dev.getLocation().getName() : "Chưa gán điểm";
                     incidentTicketService.recordDeviceFailureIncident(
                             dev.getLocation() != null ? dev.getLocation().getId() : null,
                             dev.getId(),
-                            dev.getModel() + " - " + locName,
+                            (dev.getModel() != null ? dev.getModel() : dev.getDeviceType()) + " - " + locName,
                             dev.getMacAddress(),
                             "Thiết bị báo mất kết nối (OFFLINE) trong phiên quét định kỳ từ Grandstream GDMS/GWN Cloud"
                     );
                 }
-            } else if (defaultLoc != null) {
+            } else {
                 NetworkDevice newDev = new NetworkDevice();
-                newDev.setLocation(defaultLoc);
-                newDev.setDeviceType("ROUTER");
+                newDev.setLocation(null); // Không gán bừa vào Nhà văn hóa mặc định; admin tự gán điểm hoặc giữ trạng thái chưa gán
+                newDev.setDeviceType(resolveGrandstreamDeviceType(cDev.getModel()));
                 newDev.setVendor("Grandstream");
-                newDev.setModel(cDev.getModel() != null ? cDev.getModel() : "GWN7002");
+                newDev.setModel(cDev.getModel() != null && !cDev.getModel().isBlank() ? cDev.getModel() : "GWN");
                 newDev.setSerialNumber(cleanMac);
                 newDev.setMacAddress(normMac);
                 newDev.setIpAddress(cDev.getIp());
                 newDev.setStatus(cDev.getStatus());
                 newDev.setFirmwareVersion(cDev.getFirmware());
-                newDev.setCpuUsagePercent(cDev.getCpuPercent() != null ? cDev.getCpuPercent() : 10);
-                newDev.setMemoryUsagePercent(cDev.getMemoryPercent() != null ? cDev.getMemoryPercent() : 40);
-                newDev.setUptimeSeconds(cDev.getUptimeSeconds() != null ? cDev.getUptimeSeconds() : 3600L);
+                newDev.setCpuUsagePercent(cDev.getCpuPercent() != null ? cDev.getCpuPercent() : 0);
+                newDev.setMemoryUsagePercent(cDev.getMemoryPercent() != null ? cDev.getMemoryPercent() : 0);
+                newDev.setUptimeSeconds(cDev.getUptimeSeconds() != null ? cDev.getUptimeSeconds() : 0L);
                 newDev.setInstalledAt(Instant.now());
                 newDev.setLastSeenAt(Instant.now());
                 NetworkDevice saved = deviceRepository.save(newDev);
@@ -271,10 +276,12 @@ public class NetworkDeviceService {
                 "internal",
                 "NETWORK_DEVICE",
                 "ALL",
-                "Đồng bộ thành công " + cloudDevices.size() + " thiết bị từ Grandstream Cloud (Cập nhật: " + updatedCount + ", Thêm mới: " + createdCount + ")"
+                "Đồng bộ Grandstream Cloud: nhận " + cloudDevices.size() + " thiết bị (Cập nhật: " + updatedCount + ", Thêm mới: " + createdCount + ")"
         );
 
-        String msg = String.format("Đồng bộ hoàn tất: %d thiết bị được cập nhật trạng thái thực tế từ Grandstream Cloud.", updatedCount + createdCount);
+        String msg = cloudDevices.isEmpty()
+                ? "Grandstream Cloud trả về 0 thiết bị (chưa có thiết bị nào từ API Cloud)."
+                : String.format("Đồng bộ hoàn tất: %d thiết bị được cập nhật trạng thái thực tế từ Grandstream Cloud.", updatedCount + createdCount);
         return new DeviceSyncSummaryDto(cloudDevices.size(), updatedCount, createdCount, resultList, msg, !gwnCloudGatewayAdapter.isLiveCredentialsConfigured());
     }
 

@@ -45,6 +45,14 @@ public class AdminSessionController {
         return ApiResponse.ok(sessionService.getSessionById(id));
     }
 
+    @PostMapping("/sync-cloud")
+    public ApiResponse<com.wificaptive.sessions.dto.SessionSyncSummaryDto> syncWithCloud(
+            @AuthenticationPrincipal UserPrincipal principal) {
+        String actor = principal != null ? principal.getUsername() : "admin";
+        var summary = sessionService.syncActiveSessionsWithCloud(actor);
+        return ApiResponse.ok(summary.message(), summary);
+    }
+
     @PostMapping("/{id}/revoke")
     public ApiResponse<GuestSessionDto> revokeSession(
             @PathVariable Long id,

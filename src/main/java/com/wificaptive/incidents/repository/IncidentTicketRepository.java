@@ -14,6 +14,8 @@ public interface IncidentTicketRepository extends JpaRepository<IncidentTicket, 
 
     Optional<IncidentTicket> findByTicketCode(String ticketCode);
 
+    boolean existsByTicketCode(String ticketCode);
+
     Page<IncidentTicket> findByStatus(String status, Pageable pageable);
 
     List<IncidentTicket> findByLocationId(Long locationId);

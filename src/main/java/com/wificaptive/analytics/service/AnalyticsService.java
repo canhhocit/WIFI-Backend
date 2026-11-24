@@ -44,7 +44,8 @@ public class AnalyticsService {
     @Transactional(readOnly = true)
     public DashboardOverviewDto getOverview() {
         Instant now = Instant.now();
-        Instant startOfToday = now.truncatedTo(ChronoUnit.DAYS);
+        java.time.ZoneId vnZone = java.time.ZoneId.of("Asia/Ho_Chi_Minh");
+        Instant startOfToday = java.time.LocalDate.now(vnZone).atStartOfDay(vnZone).toInstant();
 
         long totalSessions = sessionRepository.count();
         long activeSessions = sessionRepository.countActiveSessions(now);

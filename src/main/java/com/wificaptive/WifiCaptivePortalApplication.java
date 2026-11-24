@@ -32,6 +32,7 @@ public class WifiCaptivePortalApplication {
     public static void loadDotEnv() {
         Path[] candidatePaths = new Path[]{
                 Paths.get(".env"),
+                Paths.get("backend/.env"),
                 Paths.get("wifi-captive-backend/.env"),
                 Paths.get("../.env")
         };
