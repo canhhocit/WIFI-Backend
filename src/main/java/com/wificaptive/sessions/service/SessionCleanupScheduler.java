@@ -28,4 +28,17 @@ public class SessionCleanupScheduler {
             log.error("Failed during session expiration cleanup task: {}", e.getMessage(), e);
         }
     }
+
+    // Đồng bộ phiên kết nối thực tế từ GWN Cloud & Mesh AP mỗi 2 phút
+    @Scheduled(fixedDelayString = "${app.gateway.gwn-cloud.session-sync-interval-ms:120000}", initialDelay = 45000)
+    public void syncActiveSessionsFromCloud() {
+        try {
+            var summary = sessionService.syncActiveSessionsWithCloud("scheduler");
+            if (summary.cloudConnected() && (summary.expiredCount() > 0 || summary.updatedTrafficCount() > 0)) {
+                log.info("[SessionCleanupScheduler] {}", summary.message());
+            }
+        } catch (Exception e) {
+            log.warn("[SessionCleanupScheduler] Lỗi đồng bộ phiên kết nối từ GWN Cloud: {}", e.getMessage());
+        }
+    }
 }

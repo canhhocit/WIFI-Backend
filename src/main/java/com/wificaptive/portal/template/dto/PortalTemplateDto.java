@@ -1,7 +1,9 @@
 package com.wificaptive.portal.template.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.wificaptive.portal.template.entity.PortalTemplate;
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class PortalTemplateDto {
     private Long id;
     private String name;

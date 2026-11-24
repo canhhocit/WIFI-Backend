@@ -114,6 +114,33 @@ public class MeshApMonitorService {
     }
 
     /**
+     * Tập hợp các địa chỉ MAC (chuẩn hóa 12 ký tự HEX viết hoa) của client đang thật sự kết nối
+     * trên toàn bộ các Mesh AP có snapshot live còn hiệu lực.
+     */
+    public java.util.Set<String> getLiveConnectedClientMacs() {
+        java.util.Set<String> macs = new java.util.HashSet<>();
+        for (Map.Entry<Long, MeshApSnapshotDto> entry : snapshots.entrySet()) {
+            Long devId = entry.getKey();
+            MeshApSnapshotDto snap = entry.getValue();
+            if (snap == null || !snap.isLive()) {
+                continue;
+            }
+            // Bỏ qua snapshot cũ từ agent đã quá hạn stale
+            if (agentReceivedAt.containsKey(devId) && !isAgentFed(devId)) {
+                continue;
+            }
+            if (snap.clients() != null) {
+                for (MeshApSnapshotDto.Client c : snap.clients()) {
+                    if (c != null && StringUtils.hasText(c.mac())) {
+                        macs.add(c.mac().replaceAll("[^A-Fa-f0-9]", "").toUpperCase(Locale.ROOT));
+                    }
+                }
+            }
+        }
+        return macs;
+    }
+
+    /**
      * Lấy ảnh chụp trạng thái mesh; {@code refresh=true} đọc lại ngay từ thiết bị.
      */
     public MeshApSnapshotDto getSnapshot(NetworkDevice device, boolean refresh) {

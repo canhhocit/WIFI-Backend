@@ -10,6 +10,8 @@ import com.wificaptive.portal.template.repository.PortalTemplateRepository;
 import com.wificaptive.portal.template.repository.PortalTemplateVersionRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -51,41 +53,27 @@ public class PortalTemplateService {
     @Transactional
     public PortalTemplateDto saveOrUpdate(PortalTemplateDto dto) {
         PortalTemplate t;
+        boolean existedBefore = false;
         if (dto.getId() != null) {
             t = repository.findById(dto.getId())
                     .orElseThrow(() -> new ResourceNotFoundException("PortalTemplate not found with id: " + dto.getId()));
+            existedBefore = true;
         } else {
             t = new PortalTemplate();
         }
 
-        t.setName(dto.getName());
-        t.setTemplateType(dto.getTemplateType() != null ? dto.getTemplateType() : "DEFAULT");
-        t.setThemeColor(dto.getThemeColor());
-        t.setBackgroundColor(dto.getBackgroundColor());
-        if (dto.getBackgroundImageUrl() != null && !dto.getBackgroundImageUrl().isBlank()) {
-            t.setBackgroundImageUrl(dto.getBackgroundImageUrl());
-        }
-        t.setLogoUrl(dto.getLogoUrl());
-        t.setBannerUrl(dto.getBannerUrl());
-        t.setTitle(dto.getTitle());
-        t.setWelcomeText(dto.getWelcomeText());
-        t.setButtonText(dto.getButtonText());
-        t.setTermsText(dto.getTermsText());
-        t.setLayoutConfig(dto.getLayoutConfig());
-        t.setActive(dto.isActive());
+        String actor = resolveCurrentActor();
 
-        PortalTemplate saved = repository.save(t);
-
-        // Tự động lưu snapshot phiên bản khi cập nhật template
-        try {
-            int nextVersion = versionRepository.findMaxVersionNumber(saved.getId()) + 1;
-            String snapshotJson = objectMapper.writeValueAsString(PortalTemplateDto.from(saved));
-            String versionName = "Phiên bản v" + nextVersion + " (" + saved.getName() + ")";
-            versionRepository.save(new PortalTemplateVersion(saved.getId(), nextVersion, versionName, snapshotJson, "admin"));
-            log.info("[Portal Template] Đã lưu snapshot phiên bản v{} cho template id={}", nextVersion, saved.getId());
-        } catch (Exception e) {
-            log.warn("[Portal Template] Không thể lưu snapshot phiên bản template: {}", e.getMessage());
+        // Bảo toàn trạng thái gốc trước lần chỉnh sửa đầu tiên nếu chưa từng có snapshot lịch sử
+        if (existedBefore && versionRepository.findMaxVersionNumber(t.getId()) == 0) {
+            saveVersionSnapshot(t, "Bản gốc ban đầu (" + t.getName() + ")", actor);
         }
+
+        applyDto(t, dto, false);
+        PortalTemplate saved = repository.saveAndFlush(t);
+
+        // Lưu snapshot phiên bản sau khi cập nhật
+        saveVersionSnapshot(saved, null, actor);
 
         return PortalTemplateDto.from(saved);
     }
@@ -98,22 +86,74 @@ public class PortalTemplateService {
     }
 
     /**
-     * Khôi phục template về một phiên bản lịch sử.
+     * Khôi phục template về nguyên vẹn một phiên bản lịch sử.
      */
     @Transactional
     public PortalTemplateDto rollbackToVersion(Long templateId, Integer versionNumber) {
+        PortalTemplate t = repository.findById(templateId)
+                .orElseThrow(() -> new ResourceNotFoundException("PortalTemplate not found with id: " + templateId));
+
         PortalTemplateVersion version = versionRepository.findByTemplateIdAndVersionNumber(templateId, versionNumber)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy phiên bản " + versionNumber + " của template id=" + templateId));
 
         try {
             PortalTemplateDto snapshotDto = objectMapper.readValue(version.getSnapshotJson(), PortalTemplateDto.class);
-            snapshotDto.setId(templateId);
-            PortalTemplateDto restored = saveOrUpdate(snapshotDto);
-            log.info("[Portal Template] Đã khôi phục template id={} về phiên bản v{}", templateId, versionNumber);
-            return restored;
+            applyDto(t, snapshotDto, true);
+            PortalTemplate saved = repository.saveAndFlush(t);
+
+            String actor = resolveCurrentActor();
+            String restoreLabel = "Khôi phục từ v" + versionNumber + " (" + saved.getName() + ")";
+            saveVersionSnapshot(saved, restoreLabel, actor);
+
+            log.info("[Portal Template] Đã khôi phục template id={} về phiên bản v{} (themeColor={}, bgColor={})",
+                    templateId, versionNumber, saved.getThemeColor(), saved.getBackgroundColor());
+            return PortalTemplateDto.from(saved);
         } catch (Exception e) {
             throw new RuntimeException("Lỗi khôi phục cấu hình từ phiên bản snapshot: " + e.getMessage(), e);
         }
+    }
+
+    private void applyDto(PortalTemplate t, PortalTemplateDto dto, boolean exactRestore) {
+        t.setName(dto.getName());
+        t.setTemplateType(dto.getTemplateType() != null ? dto.getTemplateType() : "DEFAULT");
+        t.setThemeColor(dto.getThemeColor());
+        t.setBackgroundColor(dto.getBackgroundColor());
+        if (exactRestore || dto.getBackgroundImageUrl() != null) {
+            t.setBackgroundImageUrl(dto.getBackgroundImageUrl());
+        }
+        t.setLogoUrl(dto.getLogoUrl());
+        t.setBannerUrl(dto.getBannerUrl());
+        t.setTitle(dto.getTitle());
+        t.setWelcomeText(dto.getWelcomeText());
+        t.setButtonText(dto.getButtonText());
+        t.setTermsText(dto.getTermsText());
+        t.setLayoutConfig(dto.getLayoutConfig());
+        t.setActive(dto.isActive());
+    }
+
+    private void saveVersionSnapshot(PortalTemplate template, String customVersionName, String actor) {
+        try {
+            int nextVersion = versionRepository.findMaxVersionNumber(template.getId()) + 1;
+            String snapshotJson = objectMapper.writeValueAsString(PortalTemplateDto.from(template));
+            String versionName = (customVersionName != null && !customVersionName.isBlank())
+                    ? customVersionName
+                    : ("Phiên bản v" + nextVersion + " (" + template.getName() + ")");
+            versionRepository.save(new PortalTemplateVersion(template.getId(), nextVersion, versionName, snapshotJson, actor));
+            log.info("[Portal Template] Đã lưu snapshot phiên bản v{} cho template id={}", nextVersion, template.getId());
+        } catch (Exception e) {
+            log.warn("[Portal Template] Không thể lưu snapshot phiên bản template: {}", e.getMessage());
+        }
+    }
+
+    private String resolveCurrentActor() {
+        try {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth != null && auth.isAuthenticated() && auth.getName() != null && !"anonymousUser".equals(auth.getName())) {
+                return auth.getName();
+            }
+        } catch (Exception ignored) {
+        }
+        return "admin";
     }
 }
 

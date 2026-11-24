@@ -215,63 +215,13 @@ public class GovernmentReportPdfService {
             document.add(dataTable);
             document.add(new Paragraph(" ", new Font(bfRegular, 8)));
 
-            // 6. Nơi nhận & Khung Chữ ký có CON DẤU ĐỎ MỘC TRÒN VÀ CHỨNG THƯ KÝ SỐ
-            PdfPTable footerTable = new PdfPTable(2);
-            footerTable.setWidthPercentage(100);
-            footerTable.setWidths(new float[]{45, 55});
-
-            // Cột Nơi nhận
-            PdfPCell leftFooter = new PdfPCell();
-            leftFooter.setBorder(Rectangle.NO_BORDER);
-            leftFooter.addElement(new Paragraph("Nơi nhận:", cellBold));
-            leftFooter.addElement(new Paragraph("- UBND Thành phố Hải Phòng (để b/c);", cellRegular));
-            leftFooter.addElement(new Paragraph("- Giám đốc Sở TT&TT (để chỉ đạo);", cellRegular));
-            leftFooter.addElement(new Paragraph("- Viettel Hải Phòng (để phối hợp);", cellRegular));
-            leftFooter.addElement(new Paragraph("- Lưu: VT, CNTT.", cellRegular));
-            footerTable.addCell(leftFooter);
-
-            // Cột Chữ ký & Con dấu đỏ mộc tròn
-            PdfPCell rightFooter = new PdfPCell();
-            rightFooter.setBorder(Rectangle.NO_BORDER);
-            rightFooter.setHorizontalAlignment(Element.ALIGN_CENTER);
-
-            Paragraph signTitle = new Paragraph("KT. GIÁM ĐỐC\nPHÓ GIÁM ĐỐC", headerBold);
-            signTitle.setAlignment(Element.ALIGN_CENTER);
-            rightFooter.addElement(signTitle);
-
-            // Chèn hình ảnh Con dấu đỏ mộc tròn chính thức
-            try {
-                InputStream sealStream = getClass().getResourceAsStream("/images/seal-so-tttt-haiphong.png");
-                if (sealStream == null) {
-                    java.io.File localSeal = new java.io.File("backend/src/main/resources/images/seal-so-tttt-haiphong.png");
-                    if (localSeal.exists()) {
-                        sealStream = new java.io.FileInputStream(localSeal);
-                    }
-                }
-                if (sealStream != null) {
-                    byte[] sealBytes = sealStream.readAllBytes();
-                    Image sealImage = Image.getInstance(sealBytes);
-                    sealImage.scaleToFit(95, 95);
-                    sealImage.setAlignment(Element.ALIGN_CENTER);
-                    rightFooter.addElement(sealImage);
-                } else {
-                    rightFooter.addElement(new Paragraph("\n\n\n", subTitleFont));
-                }
-            } catch (Exception ex) {
-                rightFooter.addElement(new Paragraph("\n\n\n", subTitleFont));
-            }
-
-            Paragraph signerName = new Paragraph("Vũ Đại Thắng", headerBold);
-            signerName.setAlignment(Element.ALIGN_CENTER);
-            rightFooter.addElement(signerName);
-
-            // Badge ký số điện tử
-            Paragraph digitalBadge = new Paragraph("[ĐÃ KÝ SỐ ĐIỆN TỬ BAN CƠ YẾU CHÍNH PHỦ]", subTitleFont);
-            digitalBadge.setAlignment(Element.ALIGN_CENTER);
-            rightFooter.addElement(digitalBadge);
-
-            footerTable.addCell(rightFooter);
-            document.add(footerTable);
+            // 6. Nơi nhận
+            Paragraph recipientsTitle = new Paragraph("Nơi nhận:", cellBold);
+            document.add(recipientsTitle);
+            document.add(new Paragraph("- UBND Thành phố Hải Phòng (để b/c);", cellRegular));
+            document.add(new Paragraph("- Giám đốc Sở TT&TT (để chỉ đạo);", cellRegular));
+            document.add(new Paragraph("- Viettel Hải Phòng (để phối hợp);", cellRegular));
+            document.add(new Paragraph("- Lưu: VT, CNTT.", cellRegular));
 
             document.close();
             return out.toByteArray();
