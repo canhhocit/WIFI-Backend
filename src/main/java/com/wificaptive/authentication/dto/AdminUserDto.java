@@ -30,7 +30,11 @@ public class AdminUserDto {
         dto.setUsername(user.getUsername());
         dto.setEmail(user.getEmail());
         dto.setFullName(user.getFullName());
-        dto.setRole(user.getRole());
+        if (user.getRole() == AdminRole.ROLE_VNPT_ENGINEER) {
+            dto.setRole(AdminRole.ROLE_VIETTEL_ENGINEER);
+        } else {
+            dto.setRole(user.getRole());
+        }
         dto.setEnabled(user.isEnabled());
         dto.setAdminUnitId(user.getAdminUnitId());
         dto.setPhoneNumber(user.getPhoneNumber());

@@ -1,6 +1,7 @@
 package com.wificaptive.network.controller;
 
 import com.wificaptive.common.dto.ApiResponse;
+import com.wificaptive.common.dto.PageResponse;
 import com.wificaptive.network.dto.CreateDnsDomainRuleRequest;
 import com.wificaptive.network.dto.DnsDomainRuleDto;
 import com.wificaptive.network.service.DnsDomainRuleService;
@@ -29,7 +30,7 @@ public class DnsDomainRuleController {
 
     @GetMapping
     @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN', 'DISTRICT_OFFICER', 'VIETTEL_ENGINEER')")
-    public ResponseEntity<ApiResponse<Page<DnsDomainRuleDto>>> getRules(
+    public ResponseEntity<ApiResponse<PageResponse<DnsDomainRuleDto>>> getRules(
             @RequestParam(required = false) String ruleType,
             @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "0") int page,
@@ -37,7 +38,7 @@ public class DnsDomainRuleController {
     ) {
         PageRequest pageRequest = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
         Page<DnsDomainRuleDto> result = service.getRules(ruleType, search, pageRequest);
-        return ResponseEntity.ok(ApiResponse.ok(result));
+        return ResponseEntity.ok(ApiResponse.ok(PageResponse.from(result)));
     }
 
     @GetMapping("/whitelist")

@@ -5,6 +5,7 @@ import com.wificaptive.authentication.dto.CreateAdminUserRequest;
 import com.wificaptive.authentication.dto.UpdateAdminUserRequest;
 import com.wificaptive.authentication.service.AdminUserService;
 import com.wificaptive.common.dto.ApiResponse;
+import com.wificaptive.common.dto.PageResponse;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -28,14 +29,14 @@ public class AdminUserController {
 
     @GetMapping
     @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN')")
-    public ResponseEntity<ApiResponse<Page<AdminUserDto>>> getUsers(
+    public ResponseEntity<ApiResponse<PageResponse<AdminUserDto>>> getUsers(
             @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
     ) {
         PageRequest pageRequest = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
         Page<AdminUserDto> users = adminUserService.getUsers(search, pageRequest);
-        return ResponseEntity.ok(ApiResponse.ok(users));
+        return ResponseEntity.ok(ApiResponse.ok(PageResponse.from(users)));
     }
 
     @GetMapping("/{id}")
