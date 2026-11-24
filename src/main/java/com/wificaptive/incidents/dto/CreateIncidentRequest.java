@@ -5,7 +5,6 @@ import jakarta.validation.constraints.NotNull;
 
 public class CreateIncidentRequest {
 
-    @NotNull(message = "ID điểm phát sóng không được để trống")
     private Long locationId;
 
     private Long deviceId;

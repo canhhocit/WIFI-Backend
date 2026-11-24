@@ -158,9 +158,9 @@ public class IncidentTicketService {
             });
         }
 
-        String locName = locationRepository.findById(saved.getLocationId())
-                .map(WifiLocation::getName)
-                .orElse("Điểm #" + saved.getLocationId());
+        String locName = saved.getLocationId() != null
+                ? locationRepository.findById(saved.getLocationId()).map(WifiLocation::getName).orElse("Điểm #" + saved.getLocationId())
+                : "Chưa gán điểm";
 
         log.info("Created incident ticket {} for locationId: {}", saved.getTicketCode(), saved.getLocationId());
         return IncidentTicketDto.from(saved, locName, Collections.emptyList());
@@ -468,7 +468,7 @@ public class IncidentTicketService {
             }
         }
 
-        String locTitle = "Điểm Wi-Fi";
+        String locTitle = "Chưa gán điểm";
         if (locationId != null) {
             locTitle = locationRepository.findById(locationId).map(WifiLocation::getName).orElse("Điểm #" + locationId);
         }
@@ -479,10 +479,10 @@ public class IncidentTicketService {
         req.setIncidentType("HARDWARE_FAULT");
         req.setSeverity("CRITICAL");
         req.setSlaHours(4); // Cam kết khôi phục 4 giờ theo chuẩn SLA Sở TT&TT
-        req.setTitle("Sự cố mất kết nối phần cứng GWN: " + (deviceName != null ? deviceName : macAddress));
+        req.setTitle("Sự cố mất kết nối phần cứng: " + (deviceName != null ? deviceName : macAddress));
         req.setDescription(String.format(
-                "Hệ thống tự động phát hiện thiết bị %s (MAC: %s) tại %s đã chuyển sang trạng thái OFFLINE trên Grandstream GDMS/GWN Cloud. Lý do: %s. Đề nghị kỹ thuật viên kiểm tra nguồn điện và kết nối cáp quang.",
-                deviceName != null ? deviceName : "Grandstream GWN",
+                "Hệ thống tự động phát hiện thiết bị %s (MAC: %s) tại [%s] đã chuyển sang trạng thái OFFLINE. Lý do: %s. Đề nghị kỹ thuật viên kiểm tra nguồn điện và kết nối cáp quang.",
+                deviceName != null ? deviceName : "AP",
                 macAddress != null ? macAddress : "N/A",
                 locTitle,
                 reason != null ? reason : "Mất tín hiệu heartbeat hoặc đứt cáp quang FTTH"

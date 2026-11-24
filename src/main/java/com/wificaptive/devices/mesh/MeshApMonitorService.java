@@ -233,7 +233,7 @@ public class MeshApMonitorService {
         deviceRepository.save(dev);
 
         if ("OFFLINE".equals(dev.getStatus()) && !"OFFLINE".equalsIgnoreCase(oldStatus)) {
-            String locName = dev.getLocation() != null ? dev.getLocation().getName() : "Nhà văn hóa";
+            String locName = dev.getLocation() != null ? dev.getLocation().getName() : "Chưa gán điểm";
             incidentTicketService.recordDeviceFailureIncident(
                     dev.getLocation() != null ? dev.getLocation().getId() : null,
                     dev.getId(),
