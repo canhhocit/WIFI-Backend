@@ -7,6 +7,7 @@ import com.wificaptive.devices.repository.NetworkDeviceRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
@@ -37,13 +38,16 @@ public class MeshAgentController {
     private final NetworkDeviceRepository repo;
     private final ObjectMapper om;
     private final byte[] expectedHash;
+    private final boolean autoProvisionEnabled;
 
     public MeshAgentController(MeshApMonitorService monitor, NetworkDeviceRepository repo, ObjectMapper om,
-                               @Value("${app.mesh-ap.agent-token-sha256:}") String tokenSha256) {
+                               @Value("${app.mesh-ap.agent-token-sha256:}") String tokenSha256,
+                               @Value("${app.mesh-ap.agent-auto-provision:true}") boolean autoProvisionEnabled) {
         this.monitor = monitor;
         this.repo = repo;
         this.om = om;
         this.expectedHash = parseHex(tokenSha256);
+        this.autoProvisionEnabled = autoProvisionEnabled;
     }
 
     @GetMapping("/targets")
@@ -73,6 +77,7 @@ public class MeshAgentController {
         for (JsonNode item : body.path("devices")) {
             MeshApSnapshotDto snapshot = toSnapshot(item);
             Optional<NetworkDevice> dev = findDevice(item, snapshot);
+            if (dev.isEmpty()) dev = autoProvision(item, snapshot);
             if (dev.isEmpty()) {
                 unknown.add(item.path("mac").asText(""));
                 continue;
@@ -106,6 +111,47 @@ public class MeshAgentController {
             }
         }
         return dev.filter(MeshApMonitorService::isMeshAp);
+    }
+
+    /**
+     * Mesh chưa có trong CSDL -> tạo bản ghi từ chính dữ liệu thiết bị tự báo (MAC/S-N/model/IP),
+     * thay cho việc seed cứng. Nhờ vậy mỗi điểm phát chỉ cần cài agent self-push là AP tự xuất hiện,
+     * không phải khai báo tay từng điểm. Chỉ tạo với ảnh chụp LIVE và MAC hợp lệ (endpoint đã có token
+     * bảo vệ, và chỉ agent tại mesh mới gửi được dữ liệu này).
+     */
+    private Optional<NetworkDevice> autoProvision(JsonNode item, MeshApSnapshotDto snapshot) {
+        // Chỉ tạo khi là ảnh chụp LIVE thật và mesh có báo S/N trong topology (tránh tạo thiết bị rác
+        // từ payload chỉ có MAC). Mesh Viettel vAP luôn báo "Serial number" khi đọc được.
+        if (!autoProvisionEnabled || !snapshot.isLive() || !StringUtils.hasText(snapshot.serialNumber())) {
+            return Optional.empty();
+        }
+        String mac = normalizeMac(item.path("mac").asText(""));
+        if (mac == null) return Optional.empty();
+        String serial = snapshot.serialNumber().trim();
+        String host = item.path("host").asText("").trim();
+        try {
+            NetworkDevice d = new NetworkDevice();
+            d.setDeviceType("ACCESS_POINT");
+            d.setMacAddress(mac);
+            d.setSerialNumber(serial);
+            d.setModel(StringUtils.hasText(snapshot.model()) ? snapshot.model() : "vAP-32X6V1");
+            d.setVendor("Viettel High Tech");
+            d.setFirmwareVersion(snapshot.firmwareVersion());
+            if (!host.isEmpty()) d.setIpAddress(host);
+            d.setStatus("UNKNOWN");
+            Instant now = Instant.now();
+            d.setInstalledAt(now);
+            d.setCreatedAt(now);
+            d.setUpdatedAt(now);
+            NetworkDevice saved = repo.save(d);
+            log.info("[MeshAgent] Tự đăng ký mesh AP mới từ self-push: mac={} serial={} ip={}", mac, serial, host);
+            return Optional.ofNullable(saved);
+        } catch (DataIntegrityViolationException e) {
+            // Hai lần đẩy chạy song song cùng tạo một thiết bị -> lấy lại bản ghi vừa được tạo.
+            Optional<NetworkDevice> again = repo.findByMacAddress(mac);
+            if (again.isEmpty()) again = repo.findBySerialNumber(serial);
+            return again.filter(MeshApMonitorService::isMeshAp);
+        }
     }
 
     MeshApSnapshotDto toSnapshot(JsonNode item) {

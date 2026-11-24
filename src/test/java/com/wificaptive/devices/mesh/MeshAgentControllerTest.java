@@ -7,6 +7,7 @@ import com.wificaptive.devices.repository.NetworkDeviceRepository;
 import com.wificaptive.incidents.service.IncidentTicketService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.SimpleTransactionStatus;
@@ -40,7 +41,7 @@ class MeshAgentControllerTest {
         monitor = new MeshApMonitorService(mock(MeshApClient.class), repo, mock(IncidentTicketService.class), txm,
                 false, "admin", "", true);
         String hash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(TOKEN.getBytes(StandardCharsets.UTF_8)));
-        controller = new MeshAgentController(monitor, repo, om, hash);
+        controller = new MeshAgentController(monitor, repo, om, hash, true);
 
         device = new NetworkDevice();
         device.setId(5L);
@@ -62,7 +63,7 @@ class MeshAgentControllerTest {
     void rejectsMissingOrWrongToken() throws Exception {
         assertEquals(401, controller.targets(null).getStatusCode().value());
         assertEquals(401, controller.snapshots("wrong", body("{\"devices\":[]}")).getStatusCode().value());
-        MeshAgentController disabled = new MeshAgentController(monitor, repo, om, "");
+        MeshAgentController disabled = new MeshAgentController(monitor, repo, om, "", true);
         assertEquals(401, disabled.targets(TOKEN).getStatusCode().value());
     }
 
@@ -132,12 +133,67 @@ class MeshAgentControllerTest {
         MeshApMonitorService fast = new MeshApMonitorService(mock(MeshApClient.class), repo, mock(IncidentTicketService.class),
                 mockTx(), false, "admin", "", true, 0L);
         MeshAgentController c = new MeshAgentController(fast, repo, om,
-                HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(TOKEN.getBytes(StandardCharsets.UTF_8))));
+                HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(TOKEN.getBytes(StandardCharsets.UTF_8))), true);
         c.snapshots(TOKEN, body("{\"devices\":[{\"mac\":\"24:0B:2B:47:2A:22\",\"mode\":\"LIVE\",\"topology\":\"{}\"}]}"));
         assertEquals("ONLINE", device.getStatus());
         Thread.sleep(5);
         fast.expireAgentSnapshots();
         assertEquals("OFFLINE", device.getStatus());
+    }
+
+    @Test
+    void autoProvisionsUnknownMeshFromLiveSelfPush() throws Exception {
+        // Mesh mới chưa có trong CSDL -> server tự tạo thiết bị từ dữ liệu mesh tự báo (không seed cứng).
+        when(repo.findByMacAddress("24:0B:2B:99:88:77")).thenReturn(Optional.empty());
+        NetworkDevice created = new NetworkDevice();
+        created.setId(77L);
+        when(repo.save(any(NetworkDevice.class))).thenAnswer(inv -> {
+            NetworkDevice d = inv.getArgument(0);
+            created.setDeviceType(d.getDeviceType());
+            created.setMacAddress(d.getMacAddress());
+            created.setSerialNumber(d.getSerialNumber());
+            created.setModel(d.getModel());
+            created.setVendor(d.getVendor());
+            created.setIpAddress(d.getIpAddress());
+            return created;
+        });
+        when(repo.findById(77L)).thenReturn(Optional.of(created));
+
+        String topo = om.writeValueAsString("{\"topology information\":[{\"Serial number\":\"VTNEWAP0001\","
+                + "\"Firmware version\":\"V1.6.6_VN\",\"Product class\":\"vAP-32X6V1\",\"Radio Info\":[{\"channel\":36,"
+                + "\"BSSINFO\":[{\"BSSID\":\"26:0b:2b:99:88:78\",\"SSID\":\"VIETTEL_NEW\",\"Security\":\"0020\",\"Hidden\":0,"
+                + "\"connected sta info\":[]}]}]}]}");
+        String json = "{\"agentId\":\"mesh-24:0b:2b:99:88:77\",\"devices\":[{\"mac\":\"24:0B:2B:99:88:77\","
+                + "\"host\":\"192.168.80.150\",\"mode\":\"LIVE\",\"topology\":" + topo + ",\"systemInfo\":{\"uptime\":42}}]}";
+
+        Map<?, ?> res = (Map<?, ?>) controller.snapshots(TOKEN, body(json)).getBody();
+
+        assertEquals(1, res.get("accepted"));
+        assertEquals(List.of(), res.get("unknown"));
+        ArgumentCaptor<NetworkDevice> cap = ArgumentCaptor.forClass(NetworkDevice.class);
+        verify(repo, atLeastOnce()).save(cap.capture());
+        NetworkDevice provisioned = cap.getAllValues().get(0);
+        assertEquals("ACCESS_POINT", provisioned.getDeviceType());
+        assertEquals("24:0B:2B:99:88:77", provisioned.getMacAddress());
+        assertEquals("VTNEWAP0001", provisioned.getSerialNumber());
+        assertEquals("vAP-32X6V1", provisioned.getModel());
+        assertEquals("192.168.80.150", provisioned.getIpAddress());
+        assertEquals("ONLINE", created.getStatus()); // ingest -> applyToDevice đưa về ONLINE
+        assertEquals(MeshApMonitorService.SOURCE_MESH_LIVE, monitor.monitoringSource(created));
+    }
+
+    @Test
+    void doesNotAutoProvisionWhenDisabled() throws Exception {
+        MeshAgentController noProv = new MeshAgentController(monitor, repo, om,
+                HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(TOKEN.getBytes(StandardCharsets.UTF_8))), false);
+        when(repo.findByMacAddress("24:0B:2B:99:88:77")).thenReturn(Optional.empty());
+        String json = "{\"devices\":[{\"mac\":\"24:0B:2B:99:88:77\",\"host\":\"192.168.80.150\",\"mode\":\"LIVE\",\"topology\":\"{}\"}]}";
+
+        Map<?, ?> res = (Map<?, ?>) noProv.snapshots(TOKEN, body(json)).getBody();
+
+        assertEquals(0, res.get("accepted"));
+        assertEquals(List.of("24:0B:2B:99:88:77"), res.get("unknown"));
+        verify(repo, never()).save(any());
     }
 
     private static PlatformTransactionManager mockTx() {

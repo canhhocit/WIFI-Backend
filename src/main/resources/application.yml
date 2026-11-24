@@ -103,6 +103,10 @@ app:
     # SHA-256 của token agent, không lưu token gốc. Để trống = tắt.
     agent-token-sha256: ${MESH_AGENT_TOKEN_SHA256:}
     agent-stale-after-ms: ${MESH_AGENT_STALE_AFTER_MS:300000}
+    # Khi agent self-push gửi lên một mesh chưa có trong CSDL: tự tạo bản ghi AP từ dữ liệu thiết bị
+    # tự báo (MAC/S-N/model), thay cho khai báo tay từng điểm. Giúp triển khai 1500 điểm không cần
+    # seed cứng và không cần phần cứng thu thập riêng. Đặt false nếu chỉ muốn nhận AP đã khai báo sẵn.
+    agent-auto-provision: ${MESH_AGENT_AUTO_PROVISION:true}
     timeout-ms: ${MESH_AP_TIMEOUT_MS:5000}
     radius:
       enabled: ${RADIUS_ENABLED:true}
