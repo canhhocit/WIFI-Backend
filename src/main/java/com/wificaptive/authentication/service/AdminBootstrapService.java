@@ -54,7 +54,7 @@ public class AdminBootstrapService implements CommandLineRunner {
         bootstrapOrUpdateAccount("sotttt_admin", "password123", "sotttt@haiphong.gov.vn", "Cán bộ Sở TT&TT Hải Phòng", AdminRole.ROLE_SOTTTT_ADMIN, "0901234567", null);
 
         // 3. UBND Quận Hồng Bàng (hongbang_officer / password123)
-        bootstrapOrUpdateAccount("hongbang_officer", "password123", "canbo.hongbang@haiphong.gov.vn", "Cán bộ UBND Quận Hồng Bàng", AdminRole.ROLE_DISTRICT_OFFICER, "0912345678", 1L);
+        bootstrapOrUpdateAccount("hongbang_officer", "password123", "canbo.hongbang@haiphong.gov.vn", "Cán bộ UBND Quận Hồng Bàng", AdminRole.ROLE_DISTRICT_OFFICER, "0912345678", 2L);
 
         // 4. Kỹ sư Viễn thông Viettel (viettel_tech01 / password123)
         bootstrapOrUpdateAccount("viettel_tech01", "password123", "kythuat.viettel01@viettel.com.vn", "Kỹ thuật viên Viễn thông Viettel", AdminRole.ROLE_VIETTEL_ENGINEER, "0987654321", null);

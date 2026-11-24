@@ -219,11 +219,14 @@ public class CampaignService {
             }
         }
 
-        // Step 2: Look for administrative unit target (district/ward level)
+        // Step 2: Look for administrative unit target across 3 tiers (Cấp 3 Phường/Xã -> Cấp 2 Quận/Huyện -> Cấp 1 Thành phố)
         if (adminUnitId != null) {
-            for (Campaign c : approved) {
-                if (adminUnitId.equals(c.getTargetAdminUnitId()) && c.getTargetLocationId() == null) {
-                    return c;
+            java.util.List<Long> unitHierarchy = resolveUnitAndAncestorIds(adminUnitId);
+            for (Long targetUnitId : unitHierarchy) {
+                for (Campaign c : approved) {
+                    if (targetUnitId.equals(c.getTargetAdminUnitId()) && c.getTargetLocationId() == null) {
+                        return c;
+                    }
                 }
             }
         }
@@ -236,6 +239,32 @@ public class CampaignService {
         }
 
         return null;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.wificaptive.geography.repository.AdministrativeUnitRepository administrativeUnitRepository;
+
+    public void setAdministrativeUnitRepository(com.wificaptive.geography.repository.AdministrativeUnitRepository administrativeUnitRepository) {
+        this.administrativeUnitRepository = administrativeUnitRepository;
+    }
+
+    private java.util.List<Long> resolveUnitAndAncestorIds(Long adminUnitId) {
+        java.util.List<Long> chain = new java.util.ArrayList<>();
+        chain.add(adminUnitId);
+        if (administrativeUnitRepository != null) {
+            com.wificaptive.geography.entity.AdministrativeUnit current =
+                    administrativeUnitRepository.findById(adminUnitId).orElse(null);
+            int depth = 0;
+            while (current != null && current.getParent() != null && depth < 5) {
+                Long parentId = current.getParent().getId();
+                if (parentId != null && !chain.contains(parentId)) {
+                    chain.add(parentId);
+                }
+                current = current.getParent();
+                depth++;
+            }
+        }
+        return chain;
     }
 
     private void applyMediaAndGallery(Campaign c, CreateCampaignRequest req) {

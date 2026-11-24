@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -24,12 +25,16 @@ public interface WifiLocationRepository extends JpaRepository<WifiLocation, Long
     boolean existsByLocationCodeAndDeletedFalse(String locationCode);
     List<WifiLocation> findByActiveTrue();
     List<WifiLocation> findByActiveTrueAndDeletedFalse();
+    List<WifiLocation> findByAdminUnit_IdInAndActiveTrueAndDeletedFalse(Collection<Long> adminUnitIds);
+    List<WifiLocation> findByAdminUnit_IdInAndDeletedFalse(Collection<Long> adminUnitIds);
     long countByActiveTrue();
     long countByActiveTrueAndDeletedFalse();
     long countByDeletedFalse();
     Page<WifiLocation> findByNameContainingIgnoreCase(String name, Pageable pageable);
     Page<WifiLocation> findByDeletedFalse(Pageable pageable);
     Page<WifiLocation> findByNameContainingIgnoreCaseAndDeletedFalse(String name, Pageable pageable);
+    Page<WifiLocation> findByAdminUnit_IdInAndDeletedFalse(Collection<Long> adminUnitIds, Pageable pageable);
+    Page<WifiLocation> findByNameContainingIgnoreCaseAndAdminUnit_IdInAndDeletedFalse(String name, Collection<Long> adminUnitIds, Pageable pageable);
     @Query("SELECT l FROM WifiLocation l LEFT JOIN FETCH l.adminUnit u LEFT JOIN FETCH u.parent")
     List<WifiLocation> findAllWithAdminUnit();
     @Query("SELECT l FROM WifiLocation l LEFT JOIN FETCH l.adminUnit u LEFT JOIN FETCH u.parent WHERE l.deleted = false")

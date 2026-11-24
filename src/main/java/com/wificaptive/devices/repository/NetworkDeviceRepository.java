@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -31,6 +32,15 @@ public interface NetworkDeviceRepository extends JpaRepository<NetworkDevice, Lo
 
     @Query("SELECT d FROM NetworkDevice d WHERE d.location.adminUnit.id = :adminUnitId")
     Page<NetworkDevice> findByLocationAdminUnitId(@Param("adminUnitId") Long adminUnitId, Pageable pageable);
+
+    @Query("SELECT d FROM NetworkDevice d WHERE d.location.adminUnit.id IN :adminUnitIds")
+    Page<NetworkDevice> findByLocationAdminUnitIdIn(@Param("adminUnitIds") Collection<Long> adminUnitIds, Pageable pageable);
+
+    @Query("SELECT d FROM NetworkDevice d WHERE d.deviceType = :deviceType AND d.location.adminUnit.id IN :adminUnitIds")
+    Page<NetworkDevice> findByDeviceTypeAndLocationAdminUnitIdIn(@Param("deviceType") String deviceType, @Param("adminUnitIds") Collection<Long> adminUnitIds, Pageable pageable);
+
+    @Query("SELECT d FROM NetworkDevice d WHERE d.status = :status AND d.location.adminUnit.id IN :adminUnitIds")
+    Page<NetworkDevice> findByStatusAndLocationAdminUnitIdIn(@Param("status") String status, @Param("adminUnitIds") Collection<Long> adminUnitIds, Pageable pageable);
 
     @Query("SELECT d.macAddress FROM NetworkDevice d WHERE UPPER(d.deviceType) IN :types")
     List<String> findMacAddressesByDeviceTypeIn(@Param("types") List<String> types);

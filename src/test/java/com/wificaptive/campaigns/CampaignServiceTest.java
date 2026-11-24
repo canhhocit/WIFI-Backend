@@ -114,6 +114,48 @@ class CampaignServiceTest {
     }
 
     @Test
+    void testGetActiveCampaignForLocation_ThreeTierAdminUnitHierarchy() {
+        com.wificaptive.geography.repository.AdministrativeUnitRepository unitRepo =
+                mock(com.wificaptive.geography.repository.AdministrativeUnitRepository.class);
+        campaignService.setAdministrativeUnitRepository(unitRepo);
+
+        com.wificaptive.geography.entity.AdministrativeUnit city =
+                new com.wificaptive.geography.entity.AdministrativeUnit("HP", "Thành phố Hải Phòng", 1, "/HP/");
+        city.setId(1L);
+
+        com.wificaptive.geography.entity.AdministrativeUnit district =
+                new com.wificaptive.geography.entity.AdministrativeUnit("HP_HB", "Quận Hồng Bàng", 2, "/HP/HP_HB/");
+        district.setId(2L);
+        district.setParent(city);
+
+        com.wificaptive.geography.entity.AdministrativeUnit ward =
+                new com.wificaptive.geography.entity.AdministrativeUnit("HP_HB_HVTHU", "Phường Hoàng Văn Thụ", 3, "/HP/HP_HB/HP_HB_HVTHU/");
+        ward.setId(17L);
+        ward.setParent(district);
+
+        when(unitRepo.findById(17L)).thenReturn(Optional.of(ward));
+
+        Campaign districtCampaign = new Campaign();
+        districtCampaign.setId(20L);
+        districtCampaign.setTitle("Chiến dịch Quận Hồng Bàng (Cấp 2)");
+        districtCampaign.setTargetAdminUnitId(2L);
+        districtCampaign.setPriority(2);
+
+        Campaign cityWideCampaign = new Campaign();
+        cityWideCampaign.setId(30L);
+        cityWideCampaign.setTitle("Chiến dịch Toàn Thành phố");
+        cityWideCampaign.setPriority(1);
+
+        when(campaignRepository.findActiveApprovedCampaigns(any(Instant.class)))
+                .thenReturn(List.of(cityWideCampaign, districtCampaign));
+
+        // Điểm phát thuộc Phường Hoàng Văn Thụ (Cấp 3, id=17) phải nhận được chiến dịch của Quận Hồng Bàng (Cấp 2, id=2)
+        Campaign matched = campaignService.getActiveCampaignForLocation(500L, 17L);
+        assertNotNull(matched);
+        assertEquals(20L, matched.getId());
+    }
+
+    @Test
     void testDeleteCampaignUnlinksSurveysAndApprovals() {
         Long campaignId = 55L;
         Campaign c = new Campaign();

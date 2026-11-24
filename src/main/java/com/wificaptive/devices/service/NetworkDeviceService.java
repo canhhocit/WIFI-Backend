@@ -45,6 +45,9 @@ public class NetworkDeviceService {
     private final com.wificaptive.incidents.service.IncidentTicketService incidentTicketService;
     private final MeshApMonitorService meshApMonitorService;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.wificaptive.geography.service.AdminScopeService adminScopeService;
+
     public NetworkDeviceService(NetworkDeviceRepository deviceRepository,
                                 DeviceSwapLogRepository swapLogRepository,
                                 WifiLocationRepository locationRepository,
@@ -61,21 +64,58 @@ public class NetworkDeviceService {
         this.meshApMonitorService = meshApMonitorService;
     }
 
+    public void setAdminScopeService(com.wificaptive.geography.service.AdminScopeService adminScopeService) {
+        this.adminScopeService = adminScopeService;
+    }
+
     @Transactional(readOnly = true)
     public PageResponse<NetworkDeviceDto> getDevices(String type, String status, Long adminUnitId, Pageable pageable) {
-        Page<NetworkDevice> page;
+        java.util.Set<Long> effectiveUnitIds = null;
+        java.util.Set<Long> userScopedIds = adminScopeService != null ? adminScopeService.getCurrentUserScopedUnitIds() : null;
+
+        if (adminUnitId != null) {
+            java.util.Set<Long> requestedIds = adminScopeService != null
+                    ? adminScopeService.expandUnitAndDescendantIds(adminUnitId)
+                    : java.util.Set.of(adminUnitId);
+            if (userScopedIds != null) {
+                effectiveUnitIds = requestedIds.stream()
+                        .filter(userScopedIds::contains)
+                        .collect(Collectors.toSet());
+            } else {
+                effectiveUnitIds = requestedIds;
+            }
+        } else if (userScopedIds != null) {
+            effectiveUnitIds = userScopedIds;
+        }
+
+        String normType = null;
         if (type != null && !type.isBlank()) {
-            String normType = type.trim().toUpperCase();
+            normType = type.trim().toUpperCase();
             if ("AP".equalsIgnoreCase(normType)) {
                 normType = "ACCESS_POINT";
             }
-            page = deviceRepository.findByDeviceType(normType, pageable);
-        } else if (status != null && !status.isBlank()) {
-            page = deviceRepository.findByStatus(status.toUpperCase(), pageable);
-        } else if (adminUnitId != null) {
-            page = deviceRepository.findByLocationAdminUnitId(adminUnitId, pageable);
+        }
+        String normStatus = (status != null && !status.isBlank()) ? status.trim().toUpperCase() : null;
+
+        Page<NetworkDevice> page;
+        if (effectiveUnitIds != null) {
+            if (effectiveUnitIds.isEmpty()) {
+                page = Page.empty(pageable);
+            } else if (normType != null) {
+                page = deviceRepository.findByDeviceTypeAndLocationAdminUnitIdIn(normType, effectiveUnitIds, pageable);
+            } else if (normStatus != null) {
+                page = deviceRepository.findByStatusAndLocationAdminUnitIdIn(normStatus, effectiveUnitIds, pageable);
+            } else {
+                page = deviceRepository.findByLocationAdminUnitIdIn(effectiveUnitIds, pageable);
+            }
         } else {
-            page = deviceRepository.findAll(pageable);
+            if (normType != null) {
+                page = deviceRepository.findByDeviceType(normType, pageable);
+            } else if (normStatus != null) {
+                page = deviceRepository.findByStatus(normStatus, pageable);
+            } else {
+                page = deviceRepository.findAll(pageable);
+            }
         }
         return PageResponse.from(page.map(this::toDto));
     }

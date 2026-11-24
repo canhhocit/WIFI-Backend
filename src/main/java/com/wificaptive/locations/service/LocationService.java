@@ -33,6 +33,9 @@ public class LocationService {
     private final AuditService auditService;
     private final GuestSessionRepository sessionRepository;
 
+    @Autowired(required = false)
+    private com.wificaptive.geography.service.AdminScopeService adminScopeService;
+
     public LocationService(WifiLocationRepository locationRepository,
             AdministrativeUnitRepository adminUnitRepository,
             AuditService auditService) {
@@ -50,13 +53,29 @@ public class LocationService {
         this.sessionRepository = sessionRepository;
     }
 
+    public void setAdminScopeService(com.wificaptive.geography.service.AdminScopeService adminScopeService) {
+        this.adminScopeService = adminScopeService;
+    }
+
     @Transactional(readOnly = true)
     public PageResponse<LocationDto> getLocations(String query, Pageable pageable) {
+        java.util.Set<Long> scopedUnitIds = adminScopeService != null ? adminScopeService.getCurrentUserScopedUnitIds() : null;
         Page<WifiLocation> page;
-        if (StringUtils.hasText(query)) {
-            page = locationRepository.findByNameContainingIgnoreCaseAndDeletedFalse(query.trim(), pageable);
+        if (scopedUnitIds != null) {
+            if (scopedUnitIds.isEmpty()) {
+                page = Page.empty(pageable);
+            } else if (StringUtils.hasText(query)) {
+                page = locationRepository.findByNameContainingIgnoreCaseAndAdminUnit_IdInAndDeletedFalse(
+                        query.trim(), scopedUnitIds, pageable);
+            } else {
+                page = locationRepository.findByAdminUnit_IdInAndDeletedFalse(scopedUnitIds, pageable);
+            }
         } else {
-            page = locationRepository.findByDeletedFalse(pageable);
+            if (StringUtils.hasText(query)) {
+                page = locationRepository.findByNameContainingIgnoreCaseAndDeletedFalse(query.trim(), pageable);
+            } else {
+                page = locationRepository.findByDeletedFalse(pageable);
+            }
         }
 
         Map<Long, Long> activeMap = new HashMap<>();
@@ -83,7 +102,16 @@ public class LocationService {
 
     @Transactional(readOnly = true)
     public List<LocationDto> getActiveLocations() {
-        return locationRepository.findByActiveTrueAndDeletedFalse().stream()
+        java.util.Set<Long> scopedUnitIds = adminScopeService != null ? adminScopeService.getCurrentUserScopedUnitIds() : null;
+        List<WifiLocation> list;
+        if (scopedUnitIds != null) {
+            list = scopedUnitIds.isEmpty()
+                    ? List.of()
+                    : locationRepository.findByAdminUnit_IdInAndActiveTrueAndDeletedFalse(scopedUnitIds);
+        } else {
+            list = locationRepository.findByActiveTrueAndDeletedFalse();
+        }
+        return list.stream()
                 .map(LocationDto::from)
                 .toList();
     }

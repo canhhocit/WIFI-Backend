@@ -6,6 +6,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -17,6 +18,10 @@ public interface IncidentTicketRepository extends JpaRepository<IncidentTicket, 
     boolean existsByTicketCode(String ticketCode);
 
     Page<IncidentTicket> findByStatus(String status, Pageable pageable);
+
+    Page<IncidentTicket> findByLocationIdIn(Collection<Long> locationIds, Pageable pageable);
+
+    Page<IncidentTicket> findByStatusAndLocationIdIn(String status, Collection<Long> locationIds, Pageable pageable);
 
     List<IncidentTicket> findByLocationId(Long locationId);
 

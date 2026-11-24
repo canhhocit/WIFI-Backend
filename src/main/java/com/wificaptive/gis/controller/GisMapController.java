@@ -28,6 +28,9 @@ public class GisMapController {
     private final NetworkDeviceRepository deviceRepository;
     private final IncidentTicketRepository incidentRepository;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.wificaptive.geography.service.AdminScopeService adminScopeService;
+
     public GisMapController(WifiLocationRepository locationRepository,
                              GuestSessionRepository sessionRepository,
                              NetworkDeviceRepository deviceRepository,
@@ -46,6 +49,13 @@ public class GisMapController {
             locations = locationRepository.findAllWithAdminUnitAndDeletedFalse();
         } catch (Exception e) {
             locations = locationRepository.findByDeletedFalse(org.springframework.data.domain.Pageable.unpaged()).getContent();
+        }
+
+        java.util.Set<Long> scopedUnitIds = adminScopeService != null ? adminScopeService.getCurrentUserScopedUnitIds() : null;
+        if (scopedUnitIds != null) {
+            locations = locations.stream()
+                    .filter(loc -> loc.getAdminUnit() != null && scopedUnitIds.contains(loc.getAdminUnit().getId()))
+                    .toList();
         }
 
         List<GisLocationPinDto> result = new ArrayList<>();

@@ -29,6 +29,9 @@ public class AuthService {
     private final AuditService auditService;
     private final PasswordEncoder passwordEncoder;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.wificaptive.geography.repository.AdministrativeUnitRepository administrativeUnitRepository;
+
     public AuthService(
             AuthenticationManager authenticationManager,
             JwtTokenProvider tokenProvider,
@@ -40,6 +43,16 @@ public class AuthService {
         this.adminUserRepository = adminUserRepository;
         this.auditService = auditService;
         this.passwordEncoder = passwordEncoder;
+    }
+
+    private AdminUserDto toEnrichedDto(AdminUser user) {
+        AdminUserDto dto = AdminUserDto.from(user);
+        if (user.getAdminUnitId() != null && administrativeUnitRepository != null) {
+            administrativeUnitRepository.findById(user.getAdminUnitId())
+                    .ifPresent(unit -> dto.setAdminUnitName(
+                            com.wificaptive.geography.service.AdminScopeService.formatAdminUnitDisplayName(unit)));
+        }
+        return dto;
     }
 
     public LoginResponse login(LoginRequest loginRequest, HttpServletRequest request) {
@@ -67,13 +80,13 @@ public class AuthService {
                 "Administrator successfully authenticated from IP: " + clientIp
         );
 
-        return new LoginResponse(token, AdminUserDto.from(user));
+        return new LoginResponse(token, toEnrichedDto(user));
     }
 
     public AdminUserDto getCurrentUser(UserPrincipal principal) {
         AdminUser user = adminUserRepository.findById(principal.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("AdminUser", "id", principal.getId()));
-        return AdminUserDto.from(user);
+        return toEnrichedDto(user);
     }
 
     public void changePassword(Long userId, ChangePasswordRequest request, HttpServletRequest httpRequest) {

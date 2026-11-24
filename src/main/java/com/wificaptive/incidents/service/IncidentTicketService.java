@@ -43,6 +43,9 @@ public class IncidentTicketService {
     private final WifiLocationRepository locationRepository;
     private final com.wificaptive.devices.repository.NetworkDeviceRepository networkDeviceRepository;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.wificaptive.geography.service.AdminScopeService adminScopeService;
+
     public IncidentTicketService(
             IncidentTicketRepository ticketRepository,
             IncidentUpdateRepository updateRepository,
@@ -56,14 +59,31 @@ public class IncidentTicketService {
         this.networkDeviceRepository = networkDeviceRepository;
     }
 
+    public void setAdminScopeService(com.wificaptive.geography.service.AdminScopeService adminScopeService) {
+        this.adminScopeService = adminScopeService;
+    }
+
     @Transactional(readOnly = true)
     public PageResponse<IncidentTicketDto> getTickets(String status, int page, int size) {
         PageRequest pr = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        java.util.Set<Long> scopedLocationIds = adminScopeService != null ? adminScopeService.getCurrentUserScopedLocationIds() : null;
+        boolean hasStatusFilter = status != null && !status.isBlank() && !"ALL".equalsIgnoreCase(status);
         Page<IncidentTicket> p;
-        if (status != null && !status.isBlank() && !"ALL".equalsIgnoreCase(status)) {
-            p = ticketRepository.findByStatus(status.trim().toUpperCase(), pr);
+
+        if (scopedLocationIds != null) {
+            if (scopedLocationIds.isEmpty()) {
+                p = Page.empty(pr);
+            } else if (hasStatusFilter) {
+                p = ticketRepository.findByStatusAndLocationIdIn(status.trim().toUpperCase(), scopedLocationIds, pr);
+            } else {
+                p = ticketRepository.findByLocationIdIn(scopedLocationIds, pr);
+            }
         } else {
-            p = ticketRepository.findAll(pr);
+            if (hasStatusFilter) {
+                p = ticketRepository.findByStatus(status.trim().toUpperCase(), pr);
+            } else {
+                p = ticketRepository.findAll(pr);
+            }
         }
 
         Map<Long, String> locationNameMap = locationRepository.findAll().stream()

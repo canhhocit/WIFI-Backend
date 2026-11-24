@@ -194,7 +194,7 @@ public class AdminUserService {
         AdminUserDto dto = AdminUserDto.from(user);
         if (user.getAdminUnitId() != null) {
             administrativeUnitRepository.findById(user.getAdminUnitId())
-                    .ifPresent(unit -> dto.setAdminUnitName(unit.getName() + " (" + unit.getLevel() + ")"));
+                    .ifPresent(unit -> dto.setAdminUnitName(com.wificaptive.geography.service.AdminScopeService.formatAdminUnitDisplayName(unit)));
         }
         return dto;
     }
