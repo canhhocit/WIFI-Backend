@@ -60,9 +60,7 @@ def agent_log(m):
 
 
 def install(m, server, token):
-    tpl = (HERE / "vt-mesh-agent.sh.tpl").read_text(encoding="utf-8").replace("
-", "
-")  # ash trên mesh không chạy file CRLF
+    tpl = (HERE / "vt-mesh-agent.sh.tpl").read_text(encoding="utf-8").replace("\r\n", "\n")  # ash không chạy file CRLF
     script = tpl.replace("__SERVER__", server.rstrip("/")).replace("__TOKEN__", token)
     write_file(m, SCRIPT, script)
     log("Đã ghi", SCRIPT)
