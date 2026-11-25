@@ -53,8 +53,8 @@ public class AdminBootstrapService implements CommandLineRunner {
         // 2. Sở KH&CN Hải Phòng (sotttt_admin / password123)
         bootstrapOrUpdateAccount("sotttt_admin", "password123", "sotttt@haiphong.gov.vn", "Cán bộ Sở KH&CN Hải Phòng", AdminRole.ROLE_SOTTTT_ADMIN, "0901234567", null);
 
-        // 3. UBND Quận Hồng Bàng (hongbang_officer / password123)
-        bootstrapOrUpdateAccount("hongbang_officer", "password123", "canbo.hongbang@haiphong.gov.vn", "Cán bộ UBND Quận Hồng Bàng", AdminRole.ROLE_DISTRICT_OFFICER, "0912345678", 2L);
+        // 3. UBND Phường Hồng Bàng (hongbang_officer / password123)
+        bootstrapOrUpdateAccount("hongbang_officer", "password123", "canbo.hongbang@haiphong.gov.vn", "Cán bộ UBND Phường Hồng Bàng", AdminRole.ROLE_COMMUNE_OFFICER, "0912345678", 2L);
 
         // 4. Kỹ sư Viễn thông Viettel (viettel_tech01 / password123)
         bootstrapOrUpdateAccount("viettel_tech01", "password123", "kythuat.viettel01@viettel.com.vn", "Kỹ thuật viên Viễn thông Viettel", AdminRole.ROLE_VIETTEL_ENGINEER, "0987654321", null);
@@ -76,14 +76,25 @@ public class AdminBootstrapService implements CommandLineRunner {
             adminUserRepository.save(user);
             log.info("Initial government administrator created: username='{}', role='{}'", username, role);
         } else {
-            // Check if password hash is valid or needs to be synchronized with raw password
+            boolean changed = false;
             if (!passwordEncoder.matches(rawPassword, user.getPasswordHash())) {
                 user.setPasswordHash(passwordEncoder.encode(rawPassword));
                 user.setFailedLoginAttempts(0);
                 user.setLockedUntil(null);
                 user.setEnabled(true);
+                changed = true;
+            }
+            if (fullName != null && !fullName.equals(user.getFullName())) {
+                user.setFullName(fullName);
+                changed = true;
+            }
+            if (role != null && role != user.getRole()) {
+                user.setRole(role);
+                changed = true;
+            }
+            if (changed) {
                 adminUserRepository.save(user);
-                log.info("Synchronized and activated password hash for government account: username='{}'", username);
+                log.info("Synchronized account profile & role for government account: username='{}'", username);
             }
         }
     }
