@@ -33,6 +33,12 @@ public class DeviceController {
         return ApiResponse.ok(deviceService.getDevices(search, pageable));
     }
 
+    /** Chi tiết thiết bị khách: lịch sử phiên cổng chào + câu trả lời khảo sát (gắn theo MAC). */
+    @GetMapping("/{id}/detail")
+    public ApiResponse<java.util.Map<String, Object>> getDeviceDetail(@PathVariable Long id) {
+        return ApiResponse.ok(deviceService.getDeviceDetail(id));
+    }
+
     @PreAuthorize("@rbac.hasPermission('DEVICES', 'EDIT')")
     @PatchMapping("/{id}/block")
     public ApiResponse<DeviceDto> toggleBlockDevice(

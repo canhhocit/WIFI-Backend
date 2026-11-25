@@ -16,5 +16,8 @@ public interface SurveyResponseRepository extends JpaRepository<SurveyResponse, 
     long countBySurveyId(Long surveyId);
     long countBySurveyIdAndLocationId(Long surveyId, Long locationId);
     List<SurveyResponse> findBySubmittedAtGreaterThanEqualAndSubmittedAtLessThan(Instant start, Instant end);
+
+    /** Câu trả lời khảo sát theo MAC (không phân biệt hoa thường), mới nhất trước — dùng ở màn chi tiết thiết bị khách. */
+    List<SurveyResponse> findByClientMacIgnoreCaseOrderBySubmittedAtDesc(String clientMac);
 }
 

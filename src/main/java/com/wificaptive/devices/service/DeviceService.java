@@ -7,7 +7,12 @@ import com.wificaptive.common.exception.ResourceNotFoundException;
 import com.wificaptive.devices.dto.DeviceDto;
 import com.wificaptive.devices.entity.Device;
 import com.wificaptive.devices.repository.DeviceRepository;
+import com.wificaptive.sessions.entity.GuestSession;
+import com.wificaptive.sessions.entity.SessionStatus;
+import com.wificaptive.sessions.repository.GuestSessionRepository;
 import com.wificaptive.sessions.service.GuestSessionService;
+import com.wificaptive.surveys.entity.SurveyResponse;
+import com.wificaptive.surveys.repository.SurveyResponseRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -16,7 +21,15 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Service
@@ -25,6 +38,12 @@ public class DeviceService {
     private final DeviceRepository deviceRepository;
     private final AuditService auditService;
     private final GuestSessionService guestSessionService;
+
+    // Nguồn thông tin khách THẬT từ cổng chào (tùy chọn để không phá vỡ test dùng constructor cũ).
+    @Autowired(required = false)
+    private GuestSessionRepository guestSessionRepository;
+    @Autowired(required = false)
+    private SurveyResponseRepository surveyResponseRepository;
 
     // In-memory cache to prevent repetitive DB queries and row-lock updates on peak loads
     private final ConcurrentHashMap<String, Device> activeDeviceCache = new ConcurrentHashMap<>();
@@ -94,7 +113,88 @@ public class DeviceService {
         } else {
             page = deviceRepository.findAll(pageable);
         }
-        return PageResponse.from(page.map(DeviceDto::from));
+        PageResponse<DeviceDto> resp = PageResponse.from(page.map(DeviceDto::from));
+        enrichWithGuestInfo(resp.getContent());
+        return resp;
+    }
+
+    /**
+     * Gắn thông tin khách (họ tên/liên hệ/điểm/phiên đang hoạt động) vào DTO thiết bị từ GuestSession
+     * mới nhất theo MAC. Batch 1 truy vấn cho cả trang (không N+1). Bỏ qua nếu chưa có repository.
+     */
+    private void enrichWithGuestInfo(List<DeviceDto> dtos) {
+        if (guestSessionRepository == null || dtos == null || dtos.isEmpty()) return;
+        Map<String, DeviceDto> byMac = new HashMap<>();
+        for (DeviceDto d : dtos) {
+            if (d.getMacAddress() != null) byMac.put(d.getMacAddress().toLowerCase(Locale.ROOT), d);
+        }
+        if (byMac.isEmpty()) return;
+        List<GuestSession> sessions = guestSessionRepository.findByMacLowerInOrderByCreatedAtDesc(byMac.keySet());
+        Instant now = Instant.now();
+        Set<String> latestDone = new HashSet<>();
+        for (GuestSession s : sessions) {
+            String mac = s.getMacAddress() != null ? s.getMacAddress().toLowerCase(Locale.ROOT) : null;
+            DeviceDto d = mac != null ? byMac.get(mac) : null;
+            if (d == null) continue;
+            // Danh sách đã sắp mới nhất trước -> bản ghi đầu tiên của mỗi MAC là phiên mới nhất.
+            if (latestDone.add(mac)) {
+                d.setGuestName(s.getGuestName());
+                d.setGuestContact(s.getGuestContact());
+                d.setLastLocationName(s.getLocation() != null ? s.getLocation().getName() : null);
+            }
+            if (!d.isHasActiveSession()
+                    && s.getStatus() == SessionStatus.AUTHORIZED
+                    && s.getExpiresAt() != null && s.getExpiresAt().isAfter(now)) {
+                d.setHasActiveSession(true);
+            }
+        }
+    }
+
+    /**
+     * Chi tiết thiết bị khách: thông tin thiết bị + LỊCH SỬ PHIÊN cổng chào + CÂU TRẢ LỜI KHẢO SÁT
+     * (đều gắn theo MAC). Đây là nguồn "xem chi tiết" thật, không phụ thuộc Grandstream.
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> getDeviceDetail(Long id) {
+        Device device = deviceRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Device", "id", id));
+        DeviceDto dto = DeviceDto.from(device);
+        enrichWithGuestInfo(List.of(dto));
+
+        String macLower = device.getMacAddress() != null ? device.getMacAddress().toLowerCase(Locale.ROOT) : "";
+        List<Map<String, Object>> sessions = new ArrayList<>();
+        if (guestSessionRepository != null && !macLower.isEmpty()) {
+            for (GuestSession s : guestSessionRepository.findByMacLowerInOrderByCreatedAtDesc(List.of(macLower))) {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("locationName", s.getLocation() != null ? s.getLocation().getName() : null);
+                m.put("guestName", s.getGuestName());
+                m.put("guestContact", s.getGuestContact());
+                m.put("status", s.getStatus() != null ? s.getStatus().name() : null);
+                m.put("ipAddress", s.getIpAddress());
+                m.put("authorizedAt", s.getAuthorizedAt());
+                m.put("expiresAt", s.getExpiresAt());
+                m.put("createdAt", s.getCreatedAt());
+                m.put("bytesDownloaded", s.getBytesDownloaded());
+                m.put("bytesUploaded", s.getBytesUploaded());
+                sessions.add(m);
+            }
+        }
+        List<Map<String, Object>> surveys = new ArrayList<>();
+        if (surveyResponseRepository != null && device.getMacAddress() != null) {
+            for (SurveyResponse r : surveyResponseRepository.findByClientMacIgnoreCaseOrderBySubmittedAtDesc(device.getMacAddress())) {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("surveyId", r.getSurveyId());
+                m.put("locationId", r.getLocationId());
+                m.put("answersJson", r.getAnswersJson());
+                m.put("submittedAt", r.getSubmittedAt());
+                surveys.add(m);
+            }
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("device", dto);
+        out.put("sessions", sessions);
+        out.put("surveys", surveys);
+        return out;
     }
 
     @Transactional

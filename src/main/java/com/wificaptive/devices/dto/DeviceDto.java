@@ -13,6 +13,11 @@ public class DeviceDto {
     private Instant firstSeenAt;
     private Instant lastSeenAt;
     private boolean blocked;
+    // Thông tin lấy từ cổng chào (GuestSession mới nhất theo MAC) — nguồn thật của thiết bị khách.
+    private String guestName;
+    private String guestContact;
+    private String lastLocationName;
+    private boolean hasActiveSession;
 
     public DeviceDto() {
     }
@@ -102,4 +107,16 @@ public class DeviceDto {
     public void setBlocked(boolean blocked) {
         this.blocked = blocked;
     }
+
+    public String getGuestName() { return guestName; }
+    public void setGuestName(String guestName) { this.guestName = guestName; }
+
+    public String getGuestContact() { return guestContact; }
+    public void setGuestContact(String guestContact) { this.guestContact = guestContact; }
+
+    public String getLastLocationName() { return lastLocationName; }
+    public void setLastLocationName(String lastLocationName) { this.lastLocationName = lastLocationName; }
+
+    public boolean isHasActiveSession() { return hasActiveSession; }
+    public void setHasActiveSession(boolean hasActiveSession) { this.hasActiveSession = hasActiveSession; }
 }

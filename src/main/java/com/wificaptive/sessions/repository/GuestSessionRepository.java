@@ -21,6 +21,10 @@ public interface GuestSessionRepository extends JpaRepository<GuestSession, Long
     @Query("SELECT s FROM GuestSession s WHERE s.macAddress = :mac AND s.status = 'AUTHORIZED' AND s.expiresAt > :now")
     List<GuestSession> findActiveSessionsByMac(@Param("mac") String mac, @Param("now") Instant now);
 
+    /** Phiên cổng chào theo danh sách MAC (chuẩn hoá chữ thường), mới nhất trước — dùng gắn tên/liên hệ vào thiết bị khách. */
+    @Query("SELECT s FROM GuestSession s LEFT JOIN FETCH s.location WHERE LOWER(s.macAddress) IN :macs ORDER BY s.createdAt DESC")
+    List<GuestSession> findByMacLowerInOrderByCreatedAtDesc(@Param("macs") java.util.Collection<String> macs);
+
     @Query("SELECT s FROM GuestSession s WHERE UPPER(REPLACE(REPLACE(s.macAddress, ':', ''), '-', '')) = :cleanMac AND s.status = 'AUTHORIZED'")
     List<GuestSession> findAuthorizedByCleanMac(@Param("cleanMac") String cleanMac);
 
