@@ -179,13 +179,7 @@ public class GovernmentReportService {
         int deployedCount = deployedLocations.size();
         Set<Long> onlineDeviceLocationIds = null;
         if (networkDeviceRepository != null) {
-            onlineDeviceLocationIds = networkDeviceRepository.findAll().stream()
-                    .filter(d -> d.getLocationId() != null && "ONLINE".equalsIgnoreCase(d.getStatus()))
-                    .filter(d -> "ROUTER".equalsIgnoreCase(d.getDeviceType())
-                            || "ACCESS_POINT".equalsIgnoreCase(d.getDeviceType())
-                            || "AP".equalsIgnoreCase(d.getDeviceType()))
-                    .map(NetworkDevice::getLocationId)
-                    .collect(Collectors.toSet());
+            onlineDeviceLocationIds = networkDeviceRepository.findOnlineDeviceLocationIds();
         }
         final Set<Long> liveOnlineIds = onlineDeviceLocationIds;
         int activeLocations = (int) deployedLocations.stream()

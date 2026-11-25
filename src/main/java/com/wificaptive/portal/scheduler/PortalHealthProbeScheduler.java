@@ -64,15 +64,15 @@ public class PortalHealthProbeScheduler {
      */
     @Scheduled(fixedRateString = "${app.portal.health-probe.interval-ms:300000}", initialDelay = 60000)
     public void probePortalHealth() {
-        List<WifiLocation> locations = locationRepository.findAll();
-        if (locations.isEmpty()) {
+        java.util.Optional<WifiLocation> sampleLocationOpt = locationRepository.findFirstByActiveTrueAndDeletedFalse();
+        if (sampleLocationOpt.isEmpty()) {
             return;
         }
 
         log.debug("[Portal Prober] Bắt đầu chu kỳ thăm dò chủ động độ khả dụng Cổng chào (Portal Prober)...");
 
-        // Chọn các điểm active tiêu biểu hoặc điểm đầu tiên để probe sức khỏe cổng chào
-        WifiLocation sampleLocation = locations.get(0);
+        // Chọn điểm active đầu tiên để probe sức khỏe cổng chào (không scan toàn bảng)
+        WifiLocation sampleLocation = sampleLocationOpt.get();
         String probeUrl = String.format("http://localhost:%d/api/portal/init?location=%s", serverPort, sampleLocation.getSlug());
 
         long startTime = System.currentTimeMillis();

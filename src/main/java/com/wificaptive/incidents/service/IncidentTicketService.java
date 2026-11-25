@@ -92,8 +92,13 @@ public class IncidentTicketService {
             }
         }
 
-        Map<Long, String> locationNameMap = locationRepository.findAll().stream()
-                .collect(Collectors.toMap(WifiLocation::getId, WifiLocation::getName, (a, b) -> a));
+        Set<Long> pageLocIds = p.getContent().stream()
+                .map(IncidentTicket::getLocationId)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, String> locationNameMap = pageLocIds.isEmpty() ? Map.of() :
+                locationRepository.findAllById(pageLocIds).stream()
+                        .collect(Collectors.toMap(WifiLocation::getId, WifiLocation::getName, (a, b) -> a));
 
         return PageResponse.from(p.map(t -> {
             String locName = t.getLocationId() != null ? locationNameMap.getOrDefault(t.getLocationId(), "NVH #" + t.getLocationId()) : "Chưa xác định";
@@ -335,11 +340,9 @@ public class IncidentTicketService {
     
     @Transactional
     public int autoResolveRecoveredIncidents() {
-        // Tìm các phiếu sự cố đang mở (NEW, ASSIGNED, IN_PROGRESS)
-        List<IncidentTicket> openTickets = ticketRepository.findAll().stream()
-                .filter(t -> List.of("NEW", "ASSIGNED", "IN_PROGRESS").contains(t.getStatus()))
-                .filter(t -> t.getLocationId() != null)
-                .collect(Collectors.toList());
+        // Tìm các phiếu sự cố đang mở (NEW, ASSIGNED, IN_PROGRESS) qua SQL có index thay vì load toàn bộ bảng vào RAM
+        List<IncidentTicket> openTickets = ticketRepository.findByStatusInAndLocationIdIsNotNull(
+                List.of("NEW", "ASSIGNED", "IN_PROGRESS"));
 
         int resolvedCount = 0;
         for (IncidentTicket ticket : openTickets) {
@@ -556,10 +559,21 @@ public class IncidentTicketService {
         }
 
         // Cache locations & tickets names to avoid N+1 queries
-        Map<Long, String> locationNameMap = locationRepository.findAll().stream()
-                .collect(Collectors.toMap(WifiLocation::getId, WifiLocation::getName, (a, b) -> a));
-        Map<Long, String> ticketCodeMap = ticketRepository.findAll().stream()
-                .collect(Collectors.toMap(IncidentTicket::getId, IncidentTicket::getTicketCode, (a, b) -> a));
+        Set<Long> pageLocIds = p.getContent().stream()
+                .map(com.wificaptive.incidents.entity.CitizenReport::getLocationId)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, String> locationNameMap = pageLocIds.isEmpty() ? Map.of() :
+                locationRepository.findAllById(pageLocIds).stream()
+                        .collect(Collectors.toMap(WifiLocation::getId, WifiLocation::getName, (a, b) -> a));
+
+        Set<Long> pageTicketIds = p.getContent().stream()
+                .map(com.wificaptive.incidents.entity.CitizenReport::getIncidentTicketId)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, String> ticketCodeMap = pageTicketIds.isEmpty() ? Map.of() :
+                ticketRepository.findAllById(pageTicketIds).stream()
+                        .collect(Collectors.toMap(IncidentTicket::getId, IncidentTicket::getTicketCode, (a, b) -> a));
 
         return PageResponse.from(p.map(r -> {
             String locName = r.getLocationId() != null ? locationNameMap.getOrDefault(r.getLocationId(), "Điểm #" + r.getLocationId()) : "Chưa xác định";

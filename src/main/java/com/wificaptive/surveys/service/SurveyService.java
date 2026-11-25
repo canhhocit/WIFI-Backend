@@ -219,10 +219,13 @@ public class SurveyService {
             p = responseRepository.findBySurveyId(surveyId, pr);
         }
 
-        Map<Long, String> locationNameMap = new HashMap<>();
-        for (WifiLocation loc : locationRepository.findAll()) {
-            locationNameMap.put(loc.getId(), loc.getName());
-        }
+        java.util.Set<Long> pageLocIds = p.getContent().stream()
+                .map(SurveyResponse::getLocationId)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, String> locationNameMap = pageLocIds.isEmpty() ? Map.of() :
+                locationRepository.findAllById(pageLocIds).stream()
+                        .collect(Collectors.toMap(WifiLocation::getId, WifiLocation::getName, (a, b) -> a));
 
         return PageResponse.from(p.map(r -> {
             SurveyResponseDto dto = SurveyResponseDto.from(r);
@@ -248,10 +251,13 @@ public class SurveyService {
         List<SurveyQuestion> questions = questionRepository.findBySurveyIdOrderBySortOrderAsc(surveyId);
         List<SurveyResponse> responses = responseRepository.findBySurveyId(surveyId, PageRequest.of(0, 10000, Sort.by(Sort.Direction.DESC, "submittedAt"))).getContent();
 
-        Map<Long, String> locationNameMap = new HashMap<>();
-        for (WifiLocation loc : locationRepository.findAll()) {
-            locationNameMap.put(loc.getId(), loc.getName());
-        }
+        java.util.Set<Long> responseLocIds = responses.stream()
+                .map(SurveyResponse::getLocationId)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, String> locationNameMap = responseLocIds.isEmpty() ? Map.of() :
+                locationRepository.findAllById(responseLocIds).stream()
+                        .collect(Collectors.toMap(WifiLocation::getId, WifiLocation::getName, (a, b) -> a));
 
         SurveyAnalyticsDto analytics = new SurveyAnalyticsDto();
         analytics.setSurveyId(survey.getId());

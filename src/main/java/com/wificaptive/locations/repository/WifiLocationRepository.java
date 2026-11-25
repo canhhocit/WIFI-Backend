@@ -28,6 +28,7 @@ public interface WifiLocationRepository extends JpaRepository<WifiLocation, Long
     boolean existsByLocationCode(String locationCode);
     boolean existsBySlugAndDeletedFalse(String slug);
     boolean existsByLocationCodeAndDeletedFalse(String locationCode);
+    Optional<WifiLocation> findFirstByActiveTrueAndDeletedFalse();
     List<WifiLocation> findByActiveTrue();
     List<WifiLocation> findByActiveTrueAndDeletedFalse();
     List<WifiLocation> findByAdminUnit_IdInAndActiveTrueAndDeletedFalse(Collection<Long> adminUnitIds);

@@ -30,6 +30,8 @@ public interface IncidentTicketRepository extends JpaRepository<IncidentTicket, 
 
     List<IncidentTicket> findByDeviceIdAndStatusIn(Long deviceId, List<String> statuses);
 
+    List<IncidentTicket> findByStatusInAndLocationIdIsNotNull(Collection<String> statuses);
+
     long countByStatus(String status);
 
     @org.springframework.data.jpa.repository.Query("SELECT t.locationId, COUNT(t) FROM IncidentTicket t WHERE t.locationId IS NOT NULL GROUP BY t.locationId")

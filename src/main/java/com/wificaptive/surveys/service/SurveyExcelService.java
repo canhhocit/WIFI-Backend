@@ -47,11 +47,14 @@ public class SurveyExcelService {
     ) {
         try (XSSFWorkbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
 
-            // Build location cache
-            Map<Long, String> locationNameMap = new HashMap<>();
-            for (WifiLocation loc : locationRepository.findAll()) {
-                locationNameMap.put(loc.getId(), loc.getName());
-            }
+            // Build location cache for respondents
+            java.util.Set<Long> resLocIds = responses.stream()
+                    .map(SurveyResponse::getLocationId)
+                    .filter(java.util.Objects::nonNull)
+                    .collect(java.util.stream.Collectors.toSet());
+            Map<Long, String> locationNameMap = resLocIds.isEmpty() ? Map.of() :
+                    locationRepository.findAllById(resLocIds).stream()
+                            .collect(java.util.stream.Collectors.toMap(WifiLocation::getId, WifiLocation::getName, (a, b) -> a));
 
             // Cell Styles
             XSSFCellStyle titleStyle = createTitleStyle(workbook);

@@ -42,11 +42,17 @@ public interface NetworkDeviceRepository extends JpaRepository<NetworkDevice, Lo
     @Query("SELECT DISTINCT d.location.id FROM NetworkDevice d WHERE UPPER(d.deviceType) = 'ROUTER' AND d.location.id IS NOT NULL")
     java.util.Set<Long> findRouterLocationIds();
 
+    @Query("SELECT DISTINCT d.location.id FROM NetworkDevice d WHERE d.location.id IS NOT NULL AND UPPER(d.status) = 'ONLINE' AND UPPER(d.deviceType) IN ('ROUTER', 'ACCESS_POINT', 'AP')")
+    java.util.Set<Long> findOnlineDeviceLocationIds();
+
     @Query("SELECT d FROM NetworkDevice d WHERE UPPER(d.deviceType) IN ('ACCESS_POINT', 'AP')")
     List<NetworkDevice> findAccessPoints();
 
     @Query("SELECT d FROM NetworkDevice d WHERE UPPER(d.deviceType) = 'ROUTER'")
     List<NetworkDevice> findRouters();
+
+    @Query("SELECT d FROM NetworkDevice d WHERE UPPER(d.deviceType) = 'ROUTER'")
+    Page<NetworkDevice> findRouters(Pageable pageable);
 
     @Query("SELECT d FROM NetworkDevice d WHERE d.location.id = :locationId AND UPPER(d.deviceType) = UPPER(:deviceType)")
     List<NetworkDevice> findByLocationIdAndDeviceType(@Param("locationId") Long locationId, @Param("deviceType") String deviceType);

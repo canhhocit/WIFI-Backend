@@ -336,9 +336,17 @@ public class NetworkDeviceService {
      */
     @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public Map<String, Object> getGwnPortStatus(Long locationId) {
-        java.util.List<NetworkDevice> scope = locationId != null
-                ? deviceRepository.findByLocationId(locationId)
-                : deviceRepository.findAll();
+        java.util.List<NetworkDevice> scope;
+        if (locationId != null) {
+            scope = deviceRepository.findByLocationId(locationId);
+        } else {
+            java.util.List<NetworkDevice> sampleRouters = deviceRepository.findRouters(org.springframework.data.domain.PageRequest.of(0, 1)).getContent();
+            if (!sampleRouters.isEmpty() && sampleRouters.get(0).getLocationId() != null) {
+                scope = deviceRepository.findByLocationId(sampleRouters.get(0).getLocationId());
+            } else {
+                scope = sampleRouters;
+            }
+        }
         Map<String, NetworkDevice> meshByPort = new java.util.HashMap<>();
         NetworkDevice gwnRouter = null;
         for (NetworkDevice d : scope) {
