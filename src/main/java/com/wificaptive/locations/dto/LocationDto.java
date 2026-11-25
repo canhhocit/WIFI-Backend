@@ -36,6 +36,8 @@ public class LocationDto {
     private boolean hasGwnRouter;
     private boolean gwnRouterOnline;
     private int assignedDeviceCount;
+    /** Tổng quan sức khỏe điểm: GREEN (bình thường), ORANGE (một phần mesh lỗi), RED (mất kết nối/router offline), GRAY (chưa có GWN). */
+    private String healthStatus;
     private Instant createdAt;
     private Instant updatedAt;
 
@@ -279,4 +281,7 @@ public class LocationDto {
 
     public int getAssignedDeviceCount() { return assignedDeviceCount; }
     public void setAssignedDeviceCount(int assignedDeviceCount) { this.assignedDeviceCount = assignedDeviceCount; }
+
+    public String getHealthStatus() { return healthStatus; }
+    public void setHealthStatus(String healthStatus) { this.healthStatus = healthStatus; }
 }

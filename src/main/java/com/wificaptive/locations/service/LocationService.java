@@ -151,6 +151,7 @@ public class LocationService {
             dto.setAssignedDeviceCount(0);
             dto.setHasGwnRouter(false);
             dto.setGwnRouterOnline(false);
+            dto.setHealthStatus("GRAY");
             return;
         }
         dto.setAssignedDeviceCount(devs.size());
@@ -159,6 +160,27 @@ public class LocationService {
                 .anyMatch(d -> "ROUTER".equalsIgnoreCase(d.getDeviceType()) && "ONLINE".equalsIgnoreCase(d.getStatus()));
         dto.setHasGwnRouter(hasRouter);
         dto.setGwnRouterOnline(routerOnline);
+        dto.setHealthStatus(computeHealth(devs, hasRouter, routerOnline));
+    }
+
+    /**
+     * Tổng quan sức khỏe điểm theo 3 mức màu (bỏ qua thiết bị đã ngưng DECOMMISSIONED):
+     * - RED: có router GWN nhưng router OFFLINE -> cả điểm mất kết nối/mất liên lạc Grandstream.
+     * - ORANGE: router ONLINE nhưng có ít nhất 1 AP/mesh OFFLINE -> một phần mesh lỗi.
+     * - GREEN: router ONLINE và mọi AP/mesh ONLINE -> bình thường.
+     * - GRAY: chưa có router GWN gắn vào điểm (chưa đủ hạ tầng để đánh giá).
+     */
+    private String computeHealth(List<com.wificaptive.devices.entity.NetworkDevice> devs, boolean hasRouter, boolean routerOnline) {
+        if (!hasRouter) return "GRAY";
+        if (!routerOnline) return "RED";
+        boolean anyApOffline = devs.stream()
+                .filter(d -> {
+                    String t = d.getDeviceType() == null ? "" : d.getDeviceType().toUpperCase(java.util.Locale.ROOT);
+                    return t.equals("ACCESS_POINT") || t.equals("AP");
+                })
+                .filter(d -> !"DECOMMISSIONED".equalsIgnoreCase(d.getStatus()))
+                .anyMatch(d -> "OFFLINE".equalsIgnoreCase(d.getStatus()));
+        return anyApOffline ? "ORANGE" : "GREEN";
     }
 
     @Transactional(readOnly = true)
