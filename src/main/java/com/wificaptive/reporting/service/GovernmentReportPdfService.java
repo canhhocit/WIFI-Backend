@@ -53,9 +53,9 @@ public class GovernmentReportPdfService {
             PdfPCell leftHeader = new PdfPCell();
             leftHeader.setBorder(Rectangle.NO_BORDER);
             leftHeader.addElement(new Paragraph("ỦY BAN NHÂN DÂN THÀNH PHỐ HẢI PHÒNG", headerRegular));
-            Paragraph soTttt = new Paragraph("SỞ THÔNG TIN VÀ TRUYỀN THÔNG", headerBold);
+            Paragraph soTttt = new Paragraph("SỞ KHOA HỌC VÀ CÔNG NGHỆ", headerBold);
             leftHeader.addElement(soTttt);
-            leftHeader.addElement(new Paragraph("Số: 1584/BC-STTTT-CNTT", subTitleFont));
+            leftHeader.addElement(new Paragraph("Số: 1584/BC-SKHCN-CNTT", subTitleFont));
             headerTable.addCell(leftHeader);
 
             PdfPCell rightHeader = new PdfPCell();
@@ -219,7 +219,7 @@ public class GovernmentReportPdfService {
             Paragraph recipientsTitle = new Paragraph("Nơi nhận:", cellBold);
             document.add(recipientsTitle);
             document.add(new Paragraph("- UBND Thành phố Hải Phòng (để b/c);", cellRegular));
-            document.add(new Paragraph("- Giám đốc Sở TT&TT (để chỉ đạo);", cellRegular));
+            document.add(new Paragraph("- Giám đốc Sở KH&CN (để chỉ đạo);", cellRegular));
             document.add(new Paragraph("- Viettel Hải Phòng (để phối hợp);", cellRegular));
             document.add(new Paragraph("- Lưu: VT, CNTT.", cellRegular));
 

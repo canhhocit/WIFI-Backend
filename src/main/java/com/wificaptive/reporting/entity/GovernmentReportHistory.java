@@ -48,7 +48,7 @@ public class GovernmentReportHistory {
     private Instant submittedAt = Instant.now();
 
     @Column(name = "recipient_agency")
-    private String recipientAgency = "UBND TP Hải Phòng & Sở TT&TT";
+    private String recipientAgency = "UBND TP Hải Phòng & Sở KH&CN";
 
     @Column(columnDefinition = "TEXT")
     private String notes;

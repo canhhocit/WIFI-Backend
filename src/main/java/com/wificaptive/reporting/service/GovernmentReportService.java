@@ -282,7 +282,7 @@ public class GovernmentReportService {
         entity.setSubmittedAt(Instant.now());
         entity.setRecipientAgency(req.getRecipientAgency() != null && !req.getRecipientAgency().isBlank()
                 ? req.getRecipientAgency()
-                : "UBND TP Hải Phòng & Sở TT&TT");
+                : "UBND TP Hải Phòng & Sở KH&CN");
         entity.setNotes(req.getNotes());
 
         GovernmentReportHistory saved = historyRepository.save(entity);

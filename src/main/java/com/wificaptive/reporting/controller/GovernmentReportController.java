@@ -50,7 +50,7 @@ public class GovernmentReportController {
     ) {
         String username = authentication != null ? authentication.getName() : "sotttt@haiphong.gov.vn";
         GovernmentReportHistoryDto result = reportService.submitReport(req, username);
-        return ResponseEntity.ok(ApiResponse.ok("Gửi báo cáo lên UBND TP & Sở TT&TT thành công", result));
+        return ResponseEntity.ok(ApiResponse.ok("Gửi báo cáo lên UBND TP & Sở KH&CN thành công", result));
     }
 
     @GetMapping("/export/csv")
