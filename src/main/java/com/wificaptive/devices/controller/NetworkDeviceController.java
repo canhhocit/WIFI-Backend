@@ -23,11 +23,25 @@ public class NetworkDeviceController {
 
     private final NetworkDeviceService deviceService;
     private final com.wificaptive.devices.service.NetworkDeviceImportService importService;
+    private final org.springframework.beans.factory.ObjectProvider<com.wificaptive.devices.mesh.MeshGwnStatusScheduler> gwnStatusScheduler;
 
     public NetworkDeviceController(NetworkDeviceService deviceService,
-                                   com.wificaptive.devices.service.NetworkDeviceImportService importService) {
+                                   com.wificaptive.devices.service.NetworkDeviceImportService importService,
+                                   org.springframework.beans.factory.ObjectProvider<com.wificaptive.devices.mesh.MeshGwnStatusScheduler> gwnStatusScheduler) {
         this.deviceService = deviceService;
         this.importService = importService;
+        this.gwnStatusScheduler = gwnStatusScheduler;
+    }
+
+    /** Làm mới ngay trạng thái on/off của mesh từ Grandstream GWN Cloud (không chờ chu kỳ tự động). */
+    @PostMapping("/mesh/refresh-status")
+    public ResponseEntity<ApiResponse<Integer>> refreshMeshStatus() {
+        com.wificaptive.devices.mesh.MeshGwnStatusScheduler scheduler = gwnStatusScheduler.getIfAvailable();
+        if (scheduler == null) {
+            return ResponseEntity.ok(ApiResponse.ok("Chưa bật giám sát on/off qua GWN Cloud (MESH_GWN_STATUS_ENABLED=false)", 0));
+        }
+        int updated = scheduler.refreshNow();
+        return ResponseEntity.ok(ApiResponse.ok("Đã làm mới trạng thái " + updated + " mesh từ GWN Cloud", updated));
     }
 
     @GetMapping

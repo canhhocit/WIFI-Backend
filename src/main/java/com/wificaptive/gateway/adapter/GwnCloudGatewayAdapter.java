@@ -646,6 +646,42 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
         }
     }
 
+    /**
+     * Trạng thái link các cổng LAN của router GWN (device/info -> portInfo). Dùng để suy ra on/off của
+     * mesh cắm cổng LAN NHANH & CHẮC: rút dây là cổng link down ngay, không chờ client table GWN quên.
+     */
+    public com.wificaptive.gateway.dto.GwnRouterPorts fetchRouterPorts() {
+        if (!isLiveCredentialsConfigured()) {
+            return com.wificaptive.gateway.dto.GwnRouterPorts.unreachable();
+        }
+        try {
+            Map<String, Object> payload = new HashMap<>();
+            if (StringUtils.hasText(networkId)) {
+                try { payload.put("networkId", Long.parseLong(networkId.trim())); } catch (NumberFormatException ignored) {}
+            }
+            payload.put("mac", deviceMac);
+            GwnApiResponse response = executeGwnApi("v1.0.0/device/info", payload);
+            if (response.httpStatus >= 200 && response.httpStatus < 300 && response.retCode == 0) {
+                JsonNode ports = objectMapper.readTree(response.rawBody).path("data").path("portInfo");
+                Map<String, Boolean> lan = new java.util.LinkedHashMap<>();
+                if (ports.isArray()) {
+                    for (JsonNode p : ports) {
+                        if (!"0".equals(p.path("role").asText(""))) continue; // chỉ cổng LAN (role=0), bỏ WAN
+                        String silk = p.has("silkScreenPort") && StringUtils.hasText(p.path("silkScreenPort").asText())
+                                ? p.path("silkScreenPort").asText() : p.path("silkNum").asText("");
+                        if (!StringUtils.hasText(silk)) continue;
+                        lan.put(silk, "1".equals(p.path("linkStatus").asText("0")));
+                    }
+                }
+                return new com.wificaptive.gateway.dto.GwnRouterPorts(true, lan);
+            }
+            log.warn("[GWN Cloud Gateway] device/info trả mã bất thường (HTTP {}, retCode={})", response.httpStatus, response.retCode);
+        } catch (Exception e) {
+            log.warn("[GWN Cloud Gateway] Không truy vấn được device/info (cổng LAN): {}", e.getMessage());
+        }
+        return com.wificaptive.gateway.dto.GwnRouterPorts.unreachable();
+    }
+
     private Instant parseGwnLastActiveTime(String raw) {
         if (!StringUtils.hasText(raw)) {
             return null;

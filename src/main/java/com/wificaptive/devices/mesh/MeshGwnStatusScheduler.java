@@ -4,6 +4,7 @@ import com.wificaptive.devices.entity.NetworkDevice;
 import com.wificaptive.devices.repository.NetworkDeviceRepository;
 import com.wificaptive.gateway.adapter.GwnCloudGatewayAdapter;
 import com.wificaptive.gateway.dto.GwnClientLiveStatus;
+import com.wificaptive.gateway.dto.GwnRouterPorts;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -41,6 +42,14 @@ public class MeshGwnStatusScheduler {
 
     @Scheduled(fixedDelayString = "${app.mesh-ap.gwn-poll-interval-ms:120000}", initialDelay = 40000)
     public void pollMeshStatusViaGwnCloud() {
+        refreshNow();
+    }
+
+    /** Chạy ngay một lượt cập nhật on/off từ GWN Cloud (dùng cho nút "làm mới" trên giao diện admin). */
+    public int refreshNow() {
+        // Trạng thái link cổng LAN của router GWN — tín hiệu NHANH & CHẮC (rút dây là cổng down ngay,
+        // không chờ GWN quên client như client/info). Lấy 1 lần dùng cho mọi mesh của cùng router.
+        GwnRouterPorts ports = gwnCloud.fetchRouterPorts();
         int online = 0, offline = 0, skipped = 0;
         for (NetworkDevice d : deviceRepository.findAll()) {
             if (!MeshApMonitorService.isMeshAp(d)) continue;
@@ -49,12 +58,21 @@ public class MeshGwnStatusScheduler {
             String mac = d.getMacAddress();
             if (!StringUtils.hasText(mac)) continue;
             try {
-                GwnClientLiveStatus live = gwnCloud.fetchClientInfoFromCloud(mac);
-                if (!live.apiReachable()) { skipped++; continue; } // GWN Cloud chưa cấu hình / lỗi -> không ghi đè
-                boolean isOnline = live.exists();
-                monitor.ingestGwnStatus(d, isOnline,
-                        isOnline ? "GWN Cloud thấy mesh nối cổng LAN (client/info)"
-                                 : "GWN Cloud không còn thấy mesh (có thể đã tắt/rút cáp)");
+                boolean isOnline;
+                String reason;
+                if (ports.apiReachable() && ports.hasLanInfo()) {
+                    // 1 mesh/điểm: còn cổng LAN nào up = mesh còn cắm. Rút dây -> mọi cổng LAN down -> OFFLINE ngay.
+                    isOnline = ports.anyLanUp();
+                    reason = isOnline ? "GWN: còn cổng LAN up (mesh đang cắm)"
+                                      : "GWN: tất cả cổng LAN down (mesh đã rút/tắt)";
+                } else {
+                    // Dự phòng khi device/info không lấy được: dùng client/info (chậm chiều OFF).
+                    GwnClientLiveStatus live = gwnCloud.fetchClientInfoFromCloud(mac);
+                    if (!live.apiReachable()) { skipped++; continue; }
+                    isOnline = live.exists();
+                    reason = isOnline ? "GWN client/info thấy mesh (dự phòng)" : "GWN client/info không thấy mesh (dự phòng)";
+                }
+                monitor.ingestGwnStatus(d, isOnline, reason);
                 if (isOnline) online++; else offline++;
             } catch (Exception e) {
                 log.debug("[MeshGwnStatus] Lỗi hỏi GWN Cloud cho {}: {}", mac, e.getMessage());
@@ -64,5 +82,6 @@ public class MeshGwnStatusScheduler {
             log.info("[MeshGwnStatus] GWN Cloud: {} mesh ONLINE, {} OFFLINE, {} bỏ qua (agent/chưa cấu hình)",
                     online, offline, skipped);
         }
+        return online + offline;
     }
 }
