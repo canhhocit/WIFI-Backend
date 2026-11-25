@@ -323,15 +323,33 @@ public class NetworkDeviceService {
      */
     @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public Map<String, Object> getGwnPortStatus() {
-        com.wificaptive.gateway.dto.GwnRouterPorts ports = gwnCloudGatewayAdapter.fetchRouterPorts();
+        return getGwnPortStatus(null);
+    }
+
+    /**
+     * Trạng thái "AP theo cổng GWN" của ĐÚNG một địa điểm: tìm router GWN gắn với điểm rồi đọc cổng LAN
+     * của chính router đó (theo MAC + gwnNetworkId per-device). Truyền null -> router đầu tiên (tương
+     * thích bản 1-GWN cũ). Nhờ vậy giao diện xem theo từng điểm, scale 1500 điểm không dồn hết 1 bảng.
+     */
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public Map<String, Object> getGwnPortStatus(Long locationId) {
+        java.util.List<NetworkDevice> scope = locationId != null
+                ? deviceRepository.findByLocationId(locationId)
+                : deviceRepository.findAll();
         Map<String, NetworkDevice> meshByPort = new java.util.HashMap<>();
         NetworkDevice gwnRouter = null;
-        for (NetworkDevice d : deviceRepository.findAll()) {
+        for (NetworkDevice d : scope) {
             if ("ROUTER".equalsIgnoreCase(d.getDeviceType()) && gwnRouter == null) gwnRouter = d;
             if (MeshApMonitorService.isMeshAp(d) && org.springframework.util.StringUtils.hasText(d.getGwnLanPort())) {
                 meshByPort.put(d.getGwnLanPort().trim(), d);
             }
         }
+        // Đọc cổng của đúng router điểm này (MAC dạng hex không dấu để khớp device/info); fallback .env.
+        com.wificaptive.gateway.dto.GwnRouterPorts ports = gwnRouter != null
+                ? gwnCloudGatewayAdapter.fetchRouterPorts(
+                        gwnRouter.getMacAddress() != null ? gwnRouter.getMacAddress().replaceAll("[^0-9A-Fa-f]", "") : null,
+                        gwnRouter.getGwnNetworkId())
+                : gwnCloudGatewayAdapter.fetchRouterPorts();
         java.util.List<Map<String, Object>> list = new java.util.ArrayList<>();
         for (Map.Entry<String, Boolean> e : ports.lanUpBySilk().entrySet()) {
             boolean up = Boolean.TRUE.equals(e.getValue());

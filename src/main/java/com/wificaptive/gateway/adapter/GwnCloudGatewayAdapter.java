@@ -685,23 +685,35 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
      * mesh cắm cổng LAN NHANH & CHẮC: rút dây là cổng link down ngay, không chờ client table GWN quên.
      */
     public com.wificaptive.gateway.dto.GwnRouterPorts fetchRouterPorts() {
+        return fetchRouterPorts(null, null);
+    }
+
+    /**
+     * Trạng thái cổng LAN của ĐÚNG một router GWN theo MAC + networkId (mỗi điểm 1 router). Truyền
+     * rỗng -> fallback về router mặc định trong .env (giữ tương thích bản cũ 1-GWN). Dùng cho giao diện
+     * quản lý theo từng địa điểm: lấy cổng của router gắn với điểm đang xem.
+     */
+    public com.wificaptive.gateway.dto.GwnRouterPorts fetchRouterPorts(String routerMacOverride, String networkIdOverride) {
         if (!isLiveCredentialsConfigured()) {
             return com.wificaptive.gateway.dto.GwnRouterPorts.unreachable();
         }
+        String mac = StringUtils.hasText(routerMacOverride) ? routerMacOverride.trim() : deviceMac;
+        String netId = StringUtils.hasText(networkIdOverride) ? networkIdOverride.trim() : networkId;
         try {
             Map<String, Object> payload = new HashMap<>();
-            if (StringUtils.hasText(networkId)) {
-                try { payload.put("networkId", Long.parseLong(networkId.trim())); } catch (NumberFormatException ignored) {}
+            if (StringUtils.hasText(netId)) {
+                try { payload.put("networkId", Long.parseLong(netId)); } catch (NumberFormatException ignored) {}
             }
-            payload.put("mac", deviceMac);
+            payload.put("mac", mac);
             GwnApiResponse response = executeGwnApi("v1.0.0/device/info", payload);
             if (response.httpStatus >= 200 && response.httpStatus < 300 && response.retCode == 0) {
                 JsonNode ports = objectMapper.readTree(response.rawBody).path("data").path("portInfo");
                 return parseRouterPorts(ports);
             }
-            log.warn("[GWN Cloud Gateway] device/info trả mã bất thường (HTTP {}, retCode={})", response.httpStatus, response.retCode);
+            log.warn("[GWN Cloud Gateway] device/info trả mã bất thường cho router {} (HTTP {}, retCode={})",
+                    mac, response.httpStatus, response.retCode);
         } catch (Exception e) {
-            log.warn("[GWN Cloud Gateway] Không truy vấn được device/info (cổng LAN): {}", e.getMessage());
+            log.warn("[GWN Cloud Gateway] Không truy vấn được device/info (cổng LAN) cho router {}: {}", mac, e.getMessage());
         }
         return com.wificaptive.gateway.dto.GwnRouterPorts.unreachable();
     }

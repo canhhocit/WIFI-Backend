@@ -51,6 +51,12 @@ public class NetworkDeviceController {
         return ResponseEntity.ok(ApiResponse.ok(deviceService.getGwnPortStatus()));
     }
 
+    /** "AP theo cổng GWN" của ĐÚNG một địa điểm (router GWN gắn với điểm đó) — dùng cho màn chi tiết điểm. */
+    @GetMapping("/location/{locationId}/gwn-ports")
+    public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> gwnPortStatusByLocation(@PathVariable Long locationId) {
+        return ResponseEntity.ok(ApiResponse.ok(deviceService.getGwnPortStatus(locationId)));
+    }
+
     @GetMapping
     public ResponseEntity<ApiResponse<PageResponse<NetworkDeviceDto>>> getDevices(
             @RequestParam(required = false) String type,
