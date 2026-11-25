@@ -58,9 +58,44 @@ public class NetworkDeviceController {
         return ResponseEntity.ok(ApiResponse.ok(deviceService.getDevicesByLocation(locationId)));
     }
 
+    @GetMapping("/unassigned")
+    public ResponseEntity<ApiResponse<List<NetworkDeviceDto>>> getUnassignedDevices() {
+        return ResponseEntity.ok(ApiResponse.ok(deviceService.getUnassignedDevices()));
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<NetworkDeviceDto>> getById(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.ok(deviceService.getDeviceById(id)));
+    }
+
+    @PostMapping
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN', 'SOTTTT_ADMIN', 'DISTRICT_OFFICER', 'VIETTEL_ENGINEER')")
+    public ResponseEntity<ApiResponse<NetworkDeviceDto>> createDevice(
+            @Valid @RequestBody com.wificaptive.devices.dto.NetworkDeviceUpsertRequest request,
+            Authentication auth) {
+        NetworkDeviceDto dto = deviceService.createDevice(request, auth != null ? auth.getName() : "admin");
+        return ResponseEntity.status(org.springframework.http.HttpStatus.CREATED)
+                .body(ApiResponse.ok("Thêm mới thiết bị thành công", dto));
+    }
+
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN', 'SOTTTT_ADMIN', 'DISTRICT_OFFICER', 'VIETTEL_ENGINEER')")
+    public ResponseEntity<ApiResponse<NetworkDeviceDto>> updateDevice(
+            @PathVariable Long id,
+            @Valid @RequestBody com.wificaptive.devices.dto.NetworkDeviceUpsertRequest request,
+            Authentication auth) {
+        NetworkDeviceDto dto = deviceService.updateDevice(id, request, auth != null ? auth.getName() : "admin");
+        return ResponseEntity.ok(ApiResponse.ok("Cập nhật thiết bị thành công", dto));
+    }
+
+    @PatchMapping("/{id}/assign-location")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN', 'SOTTTT_ADMIN', 'DISTRICT_OFFICER', 'VIETTEL_ENGINEER')")
+    public ResponseEntity<ApiResponse<NetworkDeviceDto>> assignLocation(
+            @PathVariable Long id,
+            @RequestBody(required = false) com.wificaptive.devices.dto.AssignDeviceLocationRequest request,
+            Authentication auth) {
+        NetworkDeviceDto dto = deviceService.assignDeviceToLocation(id, request, auth != null ? auth.getName() : "admin");
+        return ResponseEntity.ok(ApiResponse.ok("Cập nhật gán điểm thiết bị thành công", dto));
     }
 
     @PostMapping("/swap")

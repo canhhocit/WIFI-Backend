@@ -36,6 +36,9 @@ public class LocationService {
     @Autowired(required = false)
     private com.wificaptive.geography.service.AdminScopeService adminScopeService;
 
+    @Autowired(required = false)
+    private com.wificaptive.devices.repository.NetworkDeviceRepository networkDeviceRepository;
+
     public LocationService(WifiLocationRepository locationRepository,
             AdministrativeUnitRepository adminUnitRepository,
             AuditService auditService) {
@@ -88,12 +91,22 @@ public class LocationService {
             }
         }
 
+        Map<Long, List<com.wificaptive.devices.entity.NetworkDevice>> devicesByLocation = new HashMap<>();
+        if (networkDeviceRepository != null) {
+            for (com.wificaptive.devices.entity.NetworkDevice d : networkDeviceRepository.findAll()) {
+                if (d.getLocationId() != null) {
+                    devicesByLocation.computeIfAbsent(d.getLocationId(), k -> new java.util.ArrayList<>()).add(d);
+                }
+            }
+        }
+
         Page<LocationDto> dtoPage = page.map(loc -> {
             LocationDto dto = LocationDto.from(loc);
             long active = activeMap.getOrDefault(loc.getId(), 0L);
             dto.setActiveSessionsCount(active);
             int maxUsers = loc.getMaxConcurrentUsers() != null ? loc.getMaxConcurrentUsers() : 50;
             dto.setCapacityUsagePercent(maxUsers > 0 ? Math.min(100.0, Math.round((active * 100.0 / maxUsers) * 10.0) / 10.0) : 0.0);
+            applyDeviceSummary(dto, devicesByLocation.getOrDefault(loc.getId(), List.of()));
             return dto;
         });
 
@@ -127,7 +140,25 @@ public class LocationService {
             int maxUsers = loc.getMaxConcurrentUsers() != null ? loc.getMaxConcurrentUsers() : 50;
             dto.setCapacityUsagePercent(maxUsers > 0 ? Math.min(100.0, Math.round((active * 100.0 / maxUsers) * 10.0) / 10.0) : 0.0);
         }
+        if (networkDeviceRepository != null) {
+            applyDeviceSummary(dto, networkDeviceRepository.findByLocationId(id));
+        }
         return dto;
+    }
+
+    private void applyDeviceSummary(LocationDto dto, List<com.wificaptive.devices.entity.NetworkDevice> devs) {
+        if (devs == null || devs.isEmpty()) {
+            dto.setAssignedDeviceCount(0);
+            dto.setHasGwnRouter(false);
+            dto.setGwnRouterOnline(false);
+            return;
+        }
+        dto.setAssignedDeviceCount(devs.size());
+        boolean hasRouter = devs.stream().anyMatch(d -> "ROUTER".equalsIgnoreCase(d.getDeviceType()));
+        boolean routerOnline = devs.stream()
+                .anyMatch(d -> "ROUTER".equalsIgnoreCase(d.getDeviceType()) && "ONLINE".equalsIgnoreCase(d.getStatus()));
+        dto.setHasGwnRouter(hasRouter);
+        dto.setGwnRouterOnline(routerOnline);
     }
 
     @Transactional(readOnly = true)

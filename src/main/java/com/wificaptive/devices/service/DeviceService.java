@@ -7,6 +7,8 @@ import com.wificaptive.common.exception.ResourceNotFoundException;
 import com.wificaptive.devices.dto.DeviceDto;
 import com.wificaptive.devices.entity.Device;
 import com.wificaptive.devices.repository.DeviceRepository;
+import com.wificaptive.sessions.service.GuestSessionService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -22,14 +24,24 @@ public class DeviceService {
 
     private final DeviceRepository deviceRepository;
     private final AuditService auditService;
+    private final GuestSessionService guestSessionService;
 
     // In-memory cache to prevent repetitive DB queries and row-lock updates on peak loads
     private final ConcurrentHashMap<String, Device> activeDeviceCache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Instant> deviceLastPersistMap = new ConcurrentHashMap<>();
 
     public DeviceService(DeviceRepository deviceRepository, AuditService auditService) {
+        this(deviceRepository, auditService, null);
+    }
+
+    @Autowired
+    public DeviceService(
+            DeviceRepository deviceRepository,
+            AuditService auditService,
+            @Autowired(required = false) GuestSessionService guestSessionService) {
         this.deviceRepository = deviceRepository;
         this.auditService = auditService;
+        this.guestSessionService = guestSessionService;
     }
 
     @Transactional
@@ -97,6 +109,18 @@ public class DeviceService {
             String norm = device.getMacAddress().trim().toLowerCase();
             activeDeviceCache.remove(norm);
             deviceLastPersistMap.remove(norm);
+
+            if (guestSessionService != null) {
+                if (blocked) {
+                    guestSessionService.enforceHardwareMacBlock(
+                            device.getMacAddress(),
+                            actorUsername,
+                            "Thiết bị bị chặn từ trang Quản lý thiết bị"
+                    );
+                } else {
+                    guestSessionService.releaseHardwareMacBlock(device.getMacAddress());
+                }
+            }
         }
 
         auditService.recordEvent(

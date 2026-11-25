@@ -92,6 +92,22 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
             Integer durationMinutes,
             Integer maxBandwidthMbps
     ) {
+        return authorizeSessionForRouter(sessionId, macAddress, ipAddress, durationMinutes, maxBandwidthMbps, null, null);
+    }
+
+    /**
+     * Cấp quyền truy cập Wi-Fi tới đúng Router GWN (MAC & networkId) gắn với Nhà văn hóa.
+     * Nếu routerMacOverride/networkIdOverride trống -> tự fallback về cấu hình mặc định trong .env.
+     */
+    public GatewayAuthResult authorizeSessionForRouter(
+            Long sessionId,
+            String macAddress,
+            String ipAddress,
+            Integer durationMinutes,
+            Integer maxBandwidthMbps,
+            String routerMacOverride,
+            String networkIdOverride
+    ) {
         long startTime = System.currentTimeMillis();
         totalAuthorizations.incrementAndGet();
 
@@ -113,25 +129,22 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
 
         // Real Grandstream GWN Cloud Open API Call
         try {
-            String targetRouterMac = cleanMacAddress(StringUtils.hasText(deviceMac) ? deviceMac : "EC74D798B042").toUpperCase();
-            String clientMacClean = cleanMacAddress(macAddress).toLowerCase();
-            String clientMacColon = formatMacAddress(macAddress).toLowerCase();
+            String targetRouterMac = resolveEffectiveRouterMac(routerMacOverride);
+            Long effectiveNetworkId = resolveEffectiveNetworkId(networkIdOverride);
             String clientMacUpperColon = formatMacAddress(macAddress).toUpperCase();
             // Official Grandstream GWN standard expects uppercase colon-separated MAC address (e.g. 20:82:6A:C3:64:6F)
             String clientMacParam = clientMacUpperColon;
 
             Map<String, Object> payload = new HashMap<>();
-            if (StringUtils.hasText(networkId)) {
-                try {
-                    payload.put("networkId", Long.parseLong(networkId.trim()));
-                } catch (NumberFormatException ignored) {}
+            if (effectiveNetworkId != null) {
+                payload.put("networkId", effectiveNetworkId);
             }
             payload.put("deviceMac", targetRouterMac);
             payload.put("clientMacs", clientMacParam);
             payload.put("action", "2"); // "2" - Add bypass MAC on captive portal firewall
 
-            log.info("[GWN Cloud Gateway] Sending bypass authorization: router={}, client={}, session={}",
-                    targetRouterMac, clientMacParam, sessionId);
+            log.info("[GWN Cloud Gateway] Sending bypass authorization: router={}, networkId={}, client={}, session={}",
+                    targetRouterMac, effectiveNetworkId, clientMacParam, sessionId);
 
             GwnApiResponse response = executeGwnApi("v1.0.0/client/send/global-bypass", payload);
             long latencyMs = System.currentTimeMillis() - startTime;
@@ -168,6 +181,20 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
             String ipAddress,
             String gatewayReference
     ) {
+        return revokeSessionForRouter(sessionId, macAddress, ipAddress, gatewayReference, null, null);
+    }
+
+    /**
+     * Thu hồi quyền truy cập Wi-Fi trên đúng Router GWN (MAC & networkId) gắn với Nhà văn hóa.
+     */
+    public GatewayRevokeResult revokeSessionForRouter(
+            Long sessionId,
+            String macAddress,
+            String ipAddress,
+            String gatewayReference,
+            String routerMacOverride,
+            String networkIdOverride
+    ) {
         long startTime = System.currentTimeMillis();
         totalRevocations.incrementAndGet();
 
@@ -182,18 +209,15 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
         }
 
         try {
-            String targetRouterMac = cleanMacAddress(StringUtils.hasText(deviceMac) ? deviceMac : "EC74D798B042").toUpperCase();
-            String clientMacClean = cleanMacAddress(macAddress).toLowerCase();
-            String clientMacColon = formatMacAddress(macAddress).toLowerCase();
+            String targetRouterMac = resolveEffectiveRouterMac(routerMacOverride);
+            Long effectiveNetworkId = resolveEffectiveNetworkId(networkIdOverride);
             String clientMacUpperColon = formatMacAddress(macAddress).toUpperCase();
             // Official Grandstream GWN standard expects uppercase colon-separated MAC address (e.g. 20:82:6A:C3:64:6F)
             String clientMacParam = clientMacUpperColon;
 
             Map<String, Object> payload = new HashMap<>();
-            if (StringUtils.hasText(networkId)) {
-                try {
-                    payload.put("networkId", Long.parseLong(networkId.trim()));
-                } catch (NumberFormatException ignored) {}
+            if (effectiveNetworkId != null) {
+                payload.put("networkId", effectiveNetworkId);
             }
             payload.put("deviceMac", targetRouterMac);
             payload.put("clientMacs", clientMacParam);
@@ -418,6 +442,10 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
     }
 
     public List<GwnDeviceSyncDto> fetchDevicesFromCloud() {
+        return fetchDevicesFromCloud(null);
+    }
+
+    public List<GwnDeviceSyncDto> fetchDevicesFromCloud(String networkIdOverride) {
         if (!isLiveCredentialsConfigured()) {
             log.warn("[GWN Cloud Gateway] Chưa cấu hình đủ appId/appSecret GWN Cloud, trả về 0 thiết bị.");
             return List.of();
@@ -425,10 +453,9 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
 
         try {
             Map<String, Object> payload = new HashMap<>();
-            if (StringUtils.hasText(networkId)) {
-                try {
-                    payload.put("networkId", Long.parseLong(networkId.trim()));
-                } catch (NumberFormatException ignored) {}
+            Long effectiveNetId = resolveEffectiveNetworkId(networkIdOverride);
+            if (effectiveNetId != null) {
+                payload.put("networkId", effectiveNetId);
             }
             payload.put("pageNum", 1);
             payload.put("pageSize", 100);
@@ -480,6 +507,10 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
     }
 
     public GwnRebootResult rebootDeviceOnCloud(String macAddress) {
+        return rebootDeviceOnCloud(macAddress, null);
+    }
+
+    public GwnRebootResult rebootDeviceOnCloud(String macAddress, String networkIdOverride) {
         long startTime = System.currentTimeMillis();
         String formattedMac = formatMacAddress(macAddress);
 
@@ -490,13 +521,12 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
         }
 
         try {
+            Long effectiveNetId = resolveEffectiveNetworkId(networkIdOverride);
             // Official Grandstream GWN Cloud reboot endpoint is POST /oapi/v1.0.0/ap/reboot with {"macs": ["..."], "networkId": ...}
             Map<String, Object> rebootPayload = new HashMap<>();
             rebootPayload.put("macs", List.of(formattedMac));
-            if (StringUtils.hasText(networkId)) {
-                try {
-                    rebootPayload.put("networkId", Long.parseLong(networkId.trim()));
-                } catch (NumberFormatException ignored) {}
+            if (effectiveNetId != null) {
+                rebootPayload.put("networkId", effectiveNetId);
             }
 
             GwnApiResponse response = executeGwnApi("v1.0.0/ap/reboot", rebootPayload);
@@ -513,10 +543,8 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
             String cleanMac = cleanMacAddress(formattedMac);
             Map<String, Object> cleanPayload = new HashMap<>();
             cleanPayload.put("macs", List.of(cleanMac));
-            if (StringUtils.hasText(networkId)) {
-                try {
-                    cleanPayload.put("networkId", Long.parseLong(networkId.trim()));
-                } catch (NumberFormatException ignored) {}
+            if (effectiveNetId != null) {
+                cleanPayload.put("networkId", effectiveNetId);
             }
             GwnApiResponse fallbackResp = executeGwnApi("v1.0.0/ap/reboot", cleanPayload);
             long fallbackLatency = System.currentTimeMillis() - startTime;
@@ -537,6 +565,10 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
 
     
     public List<com.wificaptive.gateway.dto.GwnClientDto> getConnectedClientsFromCloud(String apMacFilter) {
+        return getConnectedClientsFromCloud(apMacFilter, null);
+    }
+
+    public List<com.wificaptive.gateway.dto.GwnClientDto> getConnectedClientsFromCloud(String apMacFilter, String networkIdOverride) {
         if (!isLiveCredentialsConfigured()) {
             // Chưa cấu hình GWN Cloud App ID/Secret: không trả danh sách client giả lập
             log.info("[GWN Cloud Gateway] Chưa cấu hình App ID/Secret - không có dữ liệu client thật");
@@ -545,10 +577,9 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
 
         try {
             Map<String, Object> payload = new HashMap<>();
-            if (StringUtils.hasText(networkId)) {
-                try {
-                    payload.put("networkId", Long.parseLong(networkId.trim()));
-                } catch (NumberFormatException ignored) {}
+            Long effectiveNetId = resolveEffectiveNetworkId(networkIdOverride);
+            if (effectiveNetId != null) {
+                payload.put("networkId", effectiveNetId);
             }
             if (StringUtils.hasText(apMacFilter)) {
                 payload.put("apMac", cleanMacAddress(apMacFilter));
@@ -598,6 +629,10 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
      * bằng endpoint chính thức /oapi/v1.0.0/client/info.
      */
     public com.wificaptive.gateway.dto.GwnClientLiveStatus fetchClientInfoFromCloud(String macAddress) {
+        return fetchClientInfoFromCloud(macAddress, null);
+    }
+
+    public com.wificaptive.gateway.dto.GwnClientLiveStatus fetchClientInfoFromCloud(String macAddress, String networkIdOverride) {
         String formattedMac = formatMacAddress(macAddress).toUpperCase();
         if (!isLiveCredentialsConfigured()) {
             return com.wificaptive.gateway.dto.GwnClientLiveStatus.unreachable(formattedMac);
@@ -605,10 +640,9 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
 
         try {
             Map<String, Object> payload = new HashMap<>();
-            if (StringUtils.hasText(networkId)) {
-                try {
-                    payload.put("networkId", Long.parseLong(networkId.trim()));
-                } catch (NumberFormatException ignored) {}
+            Long effectiveNetId = resolveEffectiveNetworkId(networkIdOverride);
+            if (effectiveNetId != null) {
+                payload.put("networkId", effectiveNetId);
             }
             payload.put("clientId", formattedMac);
 
@@ -735,17 +769,65 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
     }
 
     public boolean blockMacAtHardwareLevel(String macAddress) {
+        return sendClientBlockAction(macAddress, "block", null);
+    }
+
+    public boolean blockMacAtHardwareLevel(String macAddress, String networkIdOverride) {
+        return sendClientBlockAction(macAddress, "block", networkIdOverride);
+    }
+
+    public boolean unblockMacAtHardwareLevel(String macAddress) {
+        return sendClientBlockAction(macAddress, "unblock", null);
+    }
+
+    public boolean unblockMacAtHardwareLevel(String macAddress, String networkIdOverride) {
+        return sendClientBlockAction(macAddress, "unblock", networkIdOverride);
+    }
+
+    private boolean sendClientBlockAction(String macAddress, String action, String networkIdOverride) {
+        if (!StringUtils.hasText(macAddress)) {
+            return false;
+        }
         String formatted = formatMacAddress(macAddress);
+        if (!isLiveCredentialsConfigured()) {
+            log.info("[GWN Cloud Gateway] Hardware {} MAC {} (STANDBY MODE)", action, formatted);
+            return true;
+        }
         try {
             Map<String, Object> payload = new HashMap<>();
+            Long effectiveNetId = resolveEffectiveNetworkId(networkIdOverride);
+            if (effectiveNetId != null) {
+                payload.put("networkId", effectiveNetId);
+            }
             payload.put("mac", formatted);
-            payload.put("action", "block");
+            payload.put("action", action);
             GwnApiResponse response = executeGwnApi("v1.0.0/client/block", payload);
-            log.info("[GWN Cloud Gateway] Blocked MAC {} at hardware router level: status={}", formatted, response.httpStatus);
-            return response.httpStatus >= 200 && response.httpStatus < 300;
+            boolean ok = response.httpStatus >= 200 && response.httpStatus < 300 && response.retCode == 0;
+            log.info("[GWN Cloud Gateway] Hardware {} MAC {}: httpStatus={}, retCode={}, ok={}",
+                    action, formatted, response.httpStatus, response.retCode, ok);
+            return ok;
         } catch (Exception e) {
-            log.warn("[GWN Cloud Gateway] Hardware block fallback for MAC {}: {}", formatted, e.getMessage());
+            log.warn("[GWN Cloud Gateway] Hardware {} failed for MAC {}: {}", action, formatted, e.getMessage());
             return false;
+        }
+    }
+
+    private String resolveEffectiveRouterMac(String routerMacOverride) {
+        String chosen = StringUtils.hasText(routerMacOverride)
+                ? routerMacOverride
+                : (StringUtils.hasText(deviceMac) ? deviceMac : "EC74D798B042");
+        return cleanMacAddress(chosen).toUpperCase();
+    }
+
+    private Long resolveEffectiveNetworkId(String networkIdOverride) {
+        String raw = StringUtils.hasText(networkIdOverride) ? networkIdOverride : networkId;
+        if (!StringUtils.hasText(raw)) {
+            return null;
+        }
+        try {
+            return Long.parseLong(raw.trim());
+        } catch (NumberFormatException ignored) {
+            return null;
         }
     }
 

@@ -33,6 +33,9 @@ public class LocationDto {
     private String contactName;
     private String contactPhone;
     private boolean active;
+    private boolean hasGwnRouter;
+    private boolean gwnRouterOnline;
+    private int assignedDeviceCount;
     private Instant createdAt;
     private Instant updatedAt;
 
@@ -267,4 +270,13 @@ public class LocationDto {
 
     public String getContactPhone() { return contactPhone; }
     public void setContactPhone(String contactPhone) { this.contactPhone = contactPhone; }
+
+    public boolean isHasGwnRouter() { return hasGwnRouter; }
+    public void setHasGwnRouter(boolean hasGwnRouter) { this.hasGwnRouter = hasGwnRouter; }
+
+    public boolean isGwnRouterOnline() { return gwnRouterOnline; }
+    public void setGwnRouterOnline(boolean gwnRouterOnline) { this.gwnRouterOnline = gwnRouterOnline; }
+
+    public int getAssignedDeviceCount() { return assignedDeviceCount; }
+    public void setAssignedDeviceCount(int assignedDeviceCount) { this.assignedDeviceCount = assignedDeviceCount; }
 }

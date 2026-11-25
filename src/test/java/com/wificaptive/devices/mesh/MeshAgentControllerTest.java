@@ -196,6 +196,44 @@ class MeshAgentControllerTest {
         verify(repo, never()).save(any());
     }
 
+    @Test
+    void autoBindsLocationWhenAgentIdMatchesLocationCode() throws Exception {
+        com.wificaptive.locations.repository.WifiLocationRepository locRepo =
+                mock(com.wificaptive.locations.repository.WifiLocationRepository.class);
+        controller.setLocationRepository(locRepo);
+
+        com.wificaptive.locations.entity.WifiLocation loc = new com.wificaptive.locations.entity.WifiLocation();
+        loc.setId(12L);
+        loc.setName("Nhà văn hóa Số 1");
+        loc.setLocationCode("NVH-0001");
+
+        when(locRepo.findByLocationCodeAndDeletedFalse("NVH-0001")).thenReturn(Optional.of(loc));
+        when(repo.findByMacAddress("24:0B:2B:99:88:66")).thenReturn(Optional.empty());
+        when(repo.findBySerialNumber("VTNEWAP0002")).thenReturn(Optional.empty());
+        NetworkDevice created = new NetworkDevice();
+        created.setId(88L);
+        created.setDeviceType("ACCESS_POINT");
+        created.setMacAddress("24:0B:2B:99:88:66");
+        created.setSerialNumber("VTNEWAP0002");
+        created.setModel("vAP-32X6V1");
+        created.setVendor("Viettel High Tech");
+        created.setLocation(loc);
+        when(repo.save(any(NetworkDevice.class))).thenReturn(created);
+        when(repo.findById(88L)).thenReturn(Optional.of(created));
+
+        String topo = om.writeValueAsString("{\"topology information\":[{\"Serial number\":\"VTNEWAP0002\","
+                + "\"Firmware version\":\"V1.6.6_VN\",\"Product class\":\"vAP-32X6V1\",\"Radio Info\":[]}]}");
+        String json = "{\"agentId\":\"NVH-0001\",\"devices\":[{\"mac\":\"24:0B:2B:99:88:66\","
+                + "\"host\":\"192.168.80.151\",\"mode\":\"LIVE\",\"topology\":" + topo + ",\"systemInfo\":{\"uptime\":10}}]}";
+
+        Map<?, ?> res = (Map<?, ?>) controller.snapshots(TOKEN, body(json)).getBody();
+
+        assertEquals(1, res.get("accepted"));
+        ArgumentCaptor<NetworkDevice> cap = ArgumentCaptor.forClass(NetworkDevice.class);
+        verify(repo, atLeastOnce()).save(cap.capture());
+        assertEquals(12L, cap.getValue().getLocation().getId());
+    }
+
     private static PlatformTransactionManager mockTx() {
         PlatformTransactionManager txm = mock(PlatformTransactionManager.class);
         when(txm.getTransaction(any())).thenReturn(new SimpleTransactionStatus());

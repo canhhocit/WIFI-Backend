@@ -21,6 +21,9 @@ public interface GuestSessionRepository extends JpaRepository<GuestSession, Long
     @Query("SELECT s FROM GuestSession s WHERE s.macAddress = :mac AND s.status = 'AUTHORIZED' AND s.expiresAt > :now")
     List<GuestSession> findActiveSessionsByMac(@Param("mac") String mac, @Param("now") Instant now);
 
+    @Query("SELECT s FROM GuestSession s WHERE UPPER(REPLACE(REPLACE(s.macAddress, ':', ''), '-', '')) = :cleanMac AND s.status = 'AUTHORIZED'")
+    List<GuestSession> findAuthorizedByCleanMac(@Param("cleanMac") String cleanMac);
+
     @Query("SELECT s FROM GuestSession s WHERE s.status = :status AND s.expiresAt <= :now")
     List<GuestSession> findSessionsToPassivate(@Param("status") SessionStatus status, @Param("now") Instant now);
 

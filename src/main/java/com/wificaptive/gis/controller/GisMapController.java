@@ -95,20 +95,9 @@ public class GisMapController {
             dto.setCircuitCode(loc.getCircuitCode());
             dto.setActive(loc.isActive());
 
-            // Map status accurately
-            String status = "ONLINE";
-            if (!loc.isActive() || "INACTIVE".equalsIgnoreCase(loc.getStatus())) {
-                status = "OFFLINE";
-            } else if ("MAINTENANCE".equalsIgnoreCase(loc.getStatus())) {
-                status = "DEGRADED";
-            }
-            dto.setStatus(status);
-
-            // Active sessions
-            long activeSessions = sessionRepository.countByLocationIdAndStatus(loc.getId(), SessionStatus.AUTHORIZED);
-            dto.setActiveSessionsCount((int) activeSessions);
-
-            // Network devices count
+            // Network devices count & GWN Router check
+            boolean hasGwnRouter = false;
+            boolean gwnRouterOnline = false;
             try {
                 List<NetworkDevice> devices = deviceRepository.findByLocationId(loc.getId());
                 dto.setTotalDevices(devices.size());
@@ -117,12 +106,34 @@ public class GisMapController {
                     if ("ONLINE".equalsIgnoreCase(d.getStatus()) || "ACTIVE".equalsIgnoreCase(d.getStatus())) {
                         onlineDevs++;
                     }
+                    if ("ROUTER".equalsIgnoreCase(d.getDeviceType())) {
+                        hasGwnRouter = true;
+                        if ("ONLINE".equalsIgnoreCase(d.getStatus()) || "ACTIVE".equalsIgnoreCase(d.getStatus())) {
+                            gwnRouterOnline = true;
+                        }
+                    }
                 }
                 dto.setOnlineDevices(onlineDevs);
             } catch (Exception ignored) {
                 dto.setTotalDevices(0);
                 dto.setOnlineDevices(0);
             }
+            dto.setHasGwnRouter(hasGwnRouter);
+
+            // Map status accurately: chỉ ONLINE khi điểm đang bật VÀ có Router GWN đang ONLINE gắn vào
+            String status = "ONLINE";
+            if (!loc.isActive() || "INACTIVE".equalsIgnoreCase(loc.getStatus())) {
+                status = "OFFLINE";
+            } else if ("MAINTENANCE".equalsIgnoreCase(loc.getStatus())) {
+                status = "DEGRADED";
+            } else if (!hasGwnRouter || !gwnRouterOnline) {
+                status = "OFFLINE";
+            }
+            dto.setStatus(status);
+
+            // Active sessions
+            long activeSessions = sessionRepository.countByLocationIdAndStatus(loc.getId(), SessionStatus.AUTHORIZED);
+            dto.setActiveSessionsCount((int) activeSessions);
 
             // Incidents count
             try {

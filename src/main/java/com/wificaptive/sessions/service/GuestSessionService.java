@@ -298,8 +298,11 @@ public class GuestSessionService {
                 continue;
             }
 
-            // 2. Truy vấn GWN Cloud /oapi/v1.0.0/client/info
-            GwnClientLiveStatus live = gwnCloudGatewayAdapter.fetchClientInfoFromCloud(session.getMacAddress());
+            // 2. Truy vấn GWN Cloud /oapi/v1.0.0/client/info (theo networkId của Router gắn điểm nếu có)
+            String routerNetworkId = resolveLocationRouterNetworkId(session);
+            GwnClientLiveStatus live = StringUtils.hasText(routerNetworkId)
+                    ? gwnCloudGatewayAdapter.fetchClientInfoFromCloud(session.getMacAddress(), routerNetworkId)
+                    : gwnCloudGatewayAdapter.fetchClientInfoFromCloud(session.getMacAddress());
             if (!live.apiReachable()) {
                 skippedCount++;
                 onlineCount++;
@@ -389,6 +392,85 @@ public class GuestSessionService {
         );
     }
 
+    /**
+     * Thu hồi toàn bộ phiên đang chạy của MAC bị chặn, đóng trạng thái trong DB
+     * và phát lệnh chặn/ngắt bypass xuống GWN Cloud ngay lập tức.
+     */
+    @Transactional
+    public int enforceHardwareMacBlock(String macAddress, String actorUsername, String reason) {
+        if (!StringUtils.hasText(macAddress)) {
+            return 0;
+        }
+        String cleanMac = macAddress.replaceAll("[^A-Fa-f0-9]", "").toUpperCase(Locale.ROOT);
+        if (cleanMac.isEmpty()) {
+            return 0;
+        }
+
+        Instant now = Instant.now();
+        String actor = StringUtils.hasText(actorUsername) ? actorUsername : "system";
+        String effectiveReason = StringUtils.hasText(reason) ? reason : "Device MAC blocked by admin";
+
+        List<GuestSession> activeSessions = sessionRepository.findAuthorizedByCleanMac(cleanMac);
+        if (activeSessions != null && !activeSessions.isEmpty()) {
+            for (GuestSession session : activeSessions) {
+                try {
+                    if (gatewayAdapter instanceof com.wificaptive.gateway.adapter.GwnCloudGatewayAdapter gwnAdapter) {
+                        com.wificaptive.devices.entity.NetworkDevice router = resolveLocationRouter(session);
+                        gwnAdapter.revokeSessionForRouter(
+                                session.getId(),
+                                session.getMacAddress(),
+                                session.getIpAddress(),
+                                session.getGatewayReference(),
+                                router != null ? router.getMacAddress() : null,
+                                router != null ? router.getGwnNetworkId() : null
+                        );
+                    } else {
+                        gatewayAdapter.revokeSession(
+                                session.getId(),
+                                session.getMacAddress(),
+                                session.getIpAddress(),
+                                session.getGatewayReference()
+                        );
+                    }
+                } catch (Exception e) {
+                    log.warn("[MAC Block] Không thể revoke phiên #{} trên gateway cho MAC {}: {}",
+                            session.getId(), macAddress, e.getMessage());
+                }
+                session.setStatus(SessionStatus.REVOKED);
+                session.setRevokedAt(now);
+                session.setRevokedBy(actor);
+                session.setRevokeReason(effectiveReason);
+                recordCompletionSafely(session, now, "MAC_BLOCKED");
+            }
+            sessionRepository.saveAll(activeSessions);
+        } else {
+            // Phòng trường hợp bypass trên GWN Cloud còn sót dù DB không còn phiên AUTHORIZED
+            try {
+                gatewayAdapter.revokeSession(null, macAddress, null, "MANUAL_MAC_BLOCK");
+            } catch (Exception e) {
+                log.warn("[MAC Block] Lỗi gọi revoke bypass dự phòng cho MAC {}: {}", macAddress, e.getMessage());
+            }
+        }
+
+        if (gwnCloudGatewayAdapter != null) {
+            gwnCloudGatewayAdapter.blockMacAtHardwareLevel(macAddress);
+        }
+
+        int revokedCount = activeSessions != null ? activeSessions.size() : 0;
+        log.info("[MAC Block] Đã đồng bộ chặn xuống GWN Cloud cho MAC {} (thu hồi {} phiên đang chạy)", macAddress, revokedCount);
+        return revokedCount;
+    }
+
+    /**
+     * Gỡ chặn MAC ở mức phần cứng trên GWN Cloud khi Admin bỏ chặn thiết bị.
+     */
+    public void releaseHardwareMacBlock(String macAddress) {
+        if (!StringUtils.hasText(macAddress) || gwnCloudGatewayAdapter == null) {
+            return;
+        }
+        gwnCloudGatewayAdapter.unblockMacAtHardwareLevel(macAddress);
+    }
+
     private void recordCompletionSafely(GuestSession session, Instant endedAt, String reason) {
         if (accessLogRetentionService == null) {
             return;
@@ -414,5 +496,30 @@ public class GuestSessionService {
         } catch (Exception e) {
             log.warn("Không thể ghi access log completion cho phiên {}: {}", session.getId(), e.getMessage());
         }
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.wificaptive.devices.repository.NetworkDeviceRepository networkDeviceRepository;
+
+    private com.wificaptive.devices.entity.NetworkDevice resolveLocationRouter(GuestSession session) {
+        if (session == null || session.getLocation() == null || session.getLocation().getId() == null || networkDeviceRepository == null) {
+            return null;
+        }
+        try {
+            List<com.wificaptive.devices.entity.NetworkDevice> routers =
+                    networkDeviceRepository.findByLocationIdAndDeviceType(session.getLocation().getId(), "ROUTER");
+            if (routers == null || routers.isEmpty()) return null;
+            return routers.stream()
+                    .filter(r -> "ONLINE".equalsIgnoreCase(r.getStatus()))
+                    .findFirst()
+                    .orElse(routers.get(0));
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private String resolveLocationRouterNetworkId(GuestSession session) {
+        com.wificaptive.devices.entity.NetworkDevice router = resolveLocationRouter(session);
+        return router != null ? router.getGwnNetworkId() : null;
     }
 }

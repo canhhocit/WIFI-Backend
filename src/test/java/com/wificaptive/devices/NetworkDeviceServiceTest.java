@@ -231,5 +231,45 @@ class NetworkDeviceServiceTest {
         assertThat(summary.getMessage()).contains("0 thiết bị");
         verifyNoInteractions(deviceRepository);
     }
+
+    @Test
+    void testCreateAndAssignDeviceToLocation_success() {
+        com.wificaptive.devices.dto.NetworkDeviceUpsertRequest req =
+                new com.wificaptive.devices.dto.NetworkDeviceUpsertRequest();
+        req.setLocationId(1L);
+        req.setName("Router chính NVH");
+        req.setDeviceType("ROUTER");
+        req.setMacAddress("ec-74-d7-98-b0-99");
+        req.setSerialNumber("EC74D798B099");
+        req.setModel("GWN7002");
+        req.setVendor("Grandstream");
+        req.setGwnNetworkId("2214");
+
+        when(deviceRepository.existsByMacAddress("EC:74:D7:98:B0:99")).thenReturn(false);
+        when(deviceRepository.existsBySerialNumber("EC74D798B099")).thenReturn(false);
+        when(locationRepository.findById(1L)).thenReturn(Optional.of(location));
+        when(deviceRepository.save(any(NetworkDevice.class))).thenAnswer(inv -> {
+            NetworkDevice d = inv.getArgument(0);
+            d.setId(55L);
+            return d;
+        });
+
+        NetworkDeviceDto created = deviceService.createDevice(req, "admin");
+
+        assertThat(created.getId()).isEqualTo(55L);
+        assertThat(created.getLocationId()).isEqualTo(1L);
+        assertThat(created.getName()).isEqualTo("Router chính NVH");
+        assertThat(created.getMacAddress()).isEqualTo("EC:74:D7:98:B0:99");
+        assertThat(created.getGwnNetworkId()).isEqualTo("2214");
+
+        // Re-assign / unassign
+        com.wificaptive.devices.dto.AssignDeviceLocationRequest unassignReq =
+                new com.wificaptive.devices.dto.AssignDeviceLocationRequest();
+        unassignReq.setLocationId(null);
+        when(deviceRepository.findById(55L)).thenReturn(Optional.of(oldDevice));
+
+        NetworkDeviceDto unassigned = deviceService.assignDeviceToLocation(55L, unassignReq, "admin");
+        assertThat(unassigned.getLocationId()).isNull();
+    }
 }
 

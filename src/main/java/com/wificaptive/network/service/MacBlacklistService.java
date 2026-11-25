@@ -5,8 +5,10 @@ import com.wificaptive.network.dto.CreateBlacklistRequest;
 import com.wificaptive.network.dto.MacBlacklistDto;
 import com.wificaptive.network.entity.MacBlacklist;
 import com.wificaptive.network.repository.MacBlacklistRepository;
+import com.wificaptive.sessions.service.GuestSessionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -22,9 +24,18 @@ public class MacBlacklistService {
     private static final Logger log = LoggerFactory.getLogger(MacBlacklistService.class);
 
     private final MacBlacklistRepository blacklistRepository;
+    private final GuestSessionService guestSessionService;
 
     public MacBlacklistService(MacBlacklistRepository blacklistRepository) {
+        this(blacklistRepository, null);
+    }
+
+    @Autowired
+    public MacBlacklistService(
+            MacBlacklistRepository blacklistRepository,
+            @Autowired(required = false) GuestSessionService guestSessionService) {
         this.blacklistRepository = blacklistRepository;
+        this.guestSessionService = guestSessionService;
     }
 
     @Transactional(readOnly = true)
@@ -64,7 +75,15 @@ public class MacBlacklistService {
         }
 
         log.warn("Device MAC {} added to blacklist by {}. Reason: {}", normalizedMac, adminUsername, req.reason());
-        return MacBlacklistDto.fromEntity(blacklistRepository.save(entry));
+        MacBlacklist saved = blacklistRepository.save(entry);
+        if (guestSessionService != null) {
+            guestSessionService.enforceHardwareMacBlock(
+                    normalizedMac,
+                    adminUsername,
+                    "Danh sách đen MAC: " + (req.reason() != null ? req.reason() : "Bị chặn bởi quản trị viên")
+            );
+        }
+        return MacBlacklistDto.fromEntity(saved);
     }
 
     public MacBlacklistDto unblock(Long id) {
@@ -72,7 +91,11 @@ public class MacBlacklistService {
                 .orElseThrow(() -> new ResourceNotFoundException("MacBlacklist", "id", id));
         entry.setActive(false);
         log.info("Device MAC {} unblocked", entry.getMacAddress());
-        return MacBlacklistDto.fromEntity(blacklistRepository.save(entry));
+        MacBlacklist saved = blacklistRepository.save(entry);
+        if (guestSessionService != null) {
+            guestSessionService.releaseHardwareMacBlock(entry.getMacAddress());
+        }
+        return MacBlacklistDto.fromEntity(saved);
     }
 }
 

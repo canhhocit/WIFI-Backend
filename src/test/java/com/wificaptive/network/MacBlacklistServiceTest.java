@@ -71,5 +71,28 @@ class MacBlacklistServiceTest {
         MacBlacklistDto unblocked = blacklistService.unblock(10L);
         assertFalse(unblocked.active());
     }
+
+    @Test
+    void testBlacklistSyncsHardwareBlockAndUnblock() {
+        var guestSessionService = mock(com.wificaptive.sessions.service.GuestSessionService.class);
+        MacBlacklistService syncService = new MacBlacklistService(blacklistRepository, guestSessionService);
+
+        CreateBlacklistRequest req = new CreateBlacklistRequest("AA:BB:CC:DD:EE:FF", "Abuse");
+        when(blacklistRepository.findByMacAddressIgnoreCase("AA:BB:CC:DD:EE:FF")).thenReturn(Optional.empty());
+
+        MacBlacklist saved = new MacBlacklist();
+        saved.setId(20L);
+        saved.setMacAddress("AA:BB:CC:DD:EE:FF");
+        saved.setReason("Abuse");
+        saved.setActive(true);
+        when(blacklistRepository.save(any(MacBlacklist.class))).thenReturn(saved);
+        when(blacklistRepository.findById(20L)).thenReturn(Optional.of(saved));
+
+        syncService.addToBlacklist(req, "security_admin");
+        verify(guestSessionService).enforceHardwareMacBlock("AA:BB:CC:DD:EE:FF", "security_admin", "Danh sách đen MAC: Abuse");
+
+        syncService.unblock(20L);
+        verify(guestSessionService).releaseHardwareMacBlock("AA:BB:CC:DD:EE:FF");
+    }
 }
 

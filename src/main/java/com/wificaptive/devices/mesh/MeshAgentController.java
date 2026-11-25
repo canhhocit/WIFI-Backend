@@ -40,6 +40,9 @@ public class MeshAgentController {
     private final byte[] expectedHash;
     private final boolean autoProvisionEnabled;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.wificaptive.locations.repository.WifiLocationRepository locationRepository;
+
     public MeshAgentController(MeshApMonitorService monitor, NetworkDeviceRepository repo, ObjectMapper om,
                                @Value("${app.mesh-ap.agent-token-sha256:}") String tokenSha256,
                                @Value("${app.mesh-ap.agent-auto-provision:true}") boolean autoProvisionEnabled) {
@@ -48,6 +51,10 @@ public class MeshAgentController {
         this.om = om;
         this.expectedHash = parseHex(tokenSha256);
         this.autoProvisionEnabled = autoProvisionEnabled;
+    }
+
+    public void setLocationRepository(com.wificaptive.locations.repository.WifiLocationRepository locationRepository) {
+        this.locationRepository = locationRepository;
     }
 
     @GetMapping("/targets")
@@ -77,15 +84,26 @@ public class MeshAgentController {
         for (JsonNode item : body.path("devices")) {
             MeshApSnapshotDto snapshot = toSnapshot(item);
             Optional<NetworkDevice> dev = findDevice(item, snapshot);
-            if (dev.isEmpty()) dev = autoProvision(item, snapshot);
+            if (dev.isEmpty()) dev = autoProvision(item, snapshot, agentId);
             if (dev.isEmpty()) {
                 unknown.add(item.path("mac").asText(""));
                 continue;
             }
+            NetworkDevice targetDev = dev.get();
+            // Nếu thiết bị chưa được gán điểm mà agentId khớp với mã điểm/slug -> tự động gắn vào Nhà văn hóa
+            if (targetDev.getLocation() == null) {
+                com.wificaptive.locations.entity.WifiLocation matchedLoc = resolveLocationFromAgentId(agentId);
+                if (matchedLoc != null) {
+                    targetDev.setLocation(matchedLoc);
+                    targetDev = repo.save(targetDev);
+                    log.info("[MeshAgent] Tự động gắn mesh AP {} vào điểm {} theo agentId={}",
+                            targetDev.getMacAddress(), matchedLoc.getName(), agentId);
+                }
+            }
             if (snapshot.isLive()) {
                 snapshot = snapshot.withMessage("Mesh đọc thành công qua agent " + agentId);
             }
-            monitor.ingestFromAgent(dev.get(), snapshot);
+            monitor.ingestFromAgent(targetDev, snapshot);
             accepted++;
         }
         log.info("[MeshAgent] {} gửi {} AP ({} không khớp)", agentId, accepted, unknown.size());
@@ -119,7 +137,7 @@ public class MeshAgentController {
      * không phải khai báo tay từng điểm. Chỉ tạo với ảnh chụp LIVE và MAC hợp lệ (endpoint đã có token
      * bảo vệ, và chỉ agent tại mesh mới gửi được dữ liệu này).
      */
-    private Optional<NetworkDevice> autoProvision(JsonNode item, MeshApSnapshotDto snapshot) {
+    private Optional<NetworkDevice> autoProvision(JsonNode item, MeshApSnapshotDto snapshot, String agentId) {
         // Chỉ tạo khi là ảnh chụp LIVE thật và mesh có báo S/N trong topology (tránh tạo thiết bị rác
         // từ payload chỉ có MAC). Mesh Viettel vAP luôn báo "Serial number" khi đọc được.
         if (!autoProvisionEnabled || !snapshot.isLive() || !StringUtils.hasText(snapshot.serialNumber())) {
@@ -139,12 +157,17 @@ public class MeshAgentController {
             d.setFirmwareVersion(snapshot.firmwareVersion());
             if (!host.isEmpty()) d.setIpAddress(host);
             d.setStatus("UNKNOWN");
+            com.wificaptive.locations.entity.WifiLocation matchedLoc = resolveLocationFromAgentId(agentId);
+            if (matchedLoc != null) {
+                d.setLocation(matchedLoc);
+            }
             Instant now = Instant.now();
             d.setInstalledAt(now);
             d.setCreatedAt(now);
             d.setUpdatedAt(now);
             NetworkDevice saved = repo.save(d);
-            log.info("[MeshAgent] Tự đăng ký mesh AP mới từ self-push: mac={} serial={} ip={}", mac, serial, host);
+            log.info("[MeshAgent] Tự đăng ký mesh AP mới từ self-push: mac={} serial={} ip={} location={}",
+                    mac, serial, host, matchedLoc != null ? matchedLoc.getName() : "unassigned");
             return Optional.ofNullable(saved);
         } catch (DataIntegrityViolationException e) {
             // Hai lần đẩy chạy song song cùng tạo một thiết bị -> lấy lại bản ghi vừa được tạo.
@@ -152,6 +175,17 @@ public class MeshAgentController {
             if (again.isEmpty()) again = repo.findBySerialNumber(serial);
             return again.filter(MeshApMonitorService::isMeshAp);
         }
+    }
+
+    private com.wificaptive.locations.entity.WifiLocation resolveLocationFromAgentId(String agentId) {
+        if (locationRepository == null || !StringUtils.hasText(agentId)) {
+            return null;
+        }
+        String trimmed = agentId.trim();
+        return locationRepository.findByLocationCodeAndDeletedFalse(trimmed)
+                .or(() -> locationRepository.findByLocationCodeAndDeletedFalse(trimmed.toUpperCase(Locale.ROOT)))
+                .or(() -> locationRepository.findBySlugAndDeletedFalse(trimmed.toLowerCase(Locale.ROOT)))
+                .orElse(null);
     }
 
     MeshApSnapshotDto toSnapshot(JsonNode item) {

@@ -128,10 +128,168 @@ public class NetworkDeviceService {
     }
 
     @Transactional(readOnly = true)
+    public List<NetworkDeviceDto> getUnassignedDevices() {
+        return deviceRepository.findByLocationIsNullOrderByUpdatedAtDesc().stream()
+                .map(this::toDto)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
     public NetworkDeviceDto getDeviceById(Long id) {
         NetworkDevice dev = deviceRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("NetworkDevice", "id", id));
         return toDto(dev);
+    }
+
+    public NetworkDeviceDto createDevice(com.wificaptive.devices.dto.NetworkDeviceUpsertRequest req, String actorUsername) {
+        String normMac = normalizeMacAddress(req.getMacAddress());
+        if (normMac == null) {
+            throw new BadRequestException("Địa chỉ MAC không hợp lệ: " + req.getMacAddress());
+        }
+        String cleanSerial = req.getSerialNumber().trim();
+        if (deviceRepository.existsByMacAddress(normMac)) {
+            throw new BadRequestException("Địa chỉ MAC đã tồn tại trên hệ thống: " + normMac);
+        }
+        if (deviceRepository.existsBySerialNumber(cleanSerial)) {
+            throw new BadRequestException("Số Serial (S/N) đã tồn tại trên hệ thống: " + cleanSerial);
+        }
+
+        NetworkDevice dev = new NetworkDevice();
+        dev.setMacAddress(normMac);
+        dev.setSerialNumber(cleanSerial);
+        dev.setDeviceType(normalizeDeviceType(req.getDeviceType()));
+        dev.setName(trimToNull(req.getName()));
+        dev.setModel(trimToNull(req.getModel()));
+        dev.setVendor(trimToNull(req.getVendor()));
+        dev.setIpAddress(trimToNull(req.getIpAddress()));
+        dev.setGwnNetworkId(trimToNull(req.getGwnNetworkId()));
+        dev.setStatus(req.getStatus() != null && !req.getStatus().isBlank() ? req.getStatus().trim().toUpperCase() : "UNKNOWN");
+        dev.setInstalledAt(Instant.now());
+
+        if (req.getLocationId() != null) {
+            WifiLocation loc = locationRepository.findById(req.getLocationId())
+                    .orElseThrow(() -> new ResourceNotFoundException("WifiLocation", "id", req.getLocationId()));
+            dev.setLocation(loc);
+        }
+
+        NetworkDevice saved = deviceRepository.save(dev);
+        auditService.recordEvent(
+                AuditAction.DEVICE_SYNC,
+                actorUsername != null ? actorUsername : "admin",
+                "internal",
+                "NETWORK_DEVICE",
+                saved.getId().toString(),
+                "Thêm mới thiết bị " + saved.getDeviceType() + " (" + saved.getMacAddress() + ")"
+                        + (saved.getLocation() != null ? " tại điểm " + saved.getLocation().getName() : " (chưa gán điểm)")
+        );
+        return toDto(saved);
+    }
+
+    public NetworkDeviceDto updateDevice(Long id, com.wificaptive.devices.dto.NetworkDeviceUpsertRequest req, String actorUsername) {
+        NetworkDevice dev = deviceRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("NetworkDevice", "id", id));
+
+        String normMac = normalizeMacAddress(req.getMacAddress());
+        if (normMac == null) {
+            throw new BadRequestException("Địa chỉ MAC không hợp lệ: " + req.getMacAddress());
+        }
+        String cleanSerial = req.getSerialNumber().trim();
+
+        deviceRepository.findByMacAddress(normMac).ifPresent(other -> {
+            if (!other.getId().equals(id)) {
+                throw new BadRequestException("Địa chỉ MAC đã thuộc thiết bị khác: " + normMac);
+            }
+        });
+        deviceRepository.findBySerialNumber(cleanSerial).ifPresent(other -> {
+            if (!other.getId().equals(id)) {
+                throw new BadRequestException("Số Serial (S/N) đã thuộc thiết bị khác: " + cleanSerial);
+            }
+        });
+
+        dev.setMacAddress(normMac);
+        dev.setSerialNumber(cleanSerial);
+        dev.setDeviceType(normalizeDeviceType(req.getDeviceType()));
+        dev.setName(trimToNull(req.getName()));
+        dev.setModel(trimToNull(req.getModel()));
+        dev.setVendor(trimToNull(req.getVendor()));
+        dev.setIpAddress(trimToNull(req.getIpAddress()));
+        dev.setGwnNetworkId(trimToNull(req.getGwnNetworkId()));
+        if (req.getStatus() != null && !req.getStatus().isBlank()) {
+            dev.setStatus(req.getStatus().trim().toUpperCase());
+        }
+
+        if (req.getLocationId() != null) {
+            WifiLocation loc = locationRepository.findById(req.getLocationId())
+                    .orElseThrow(() -> new ResourceNotFoundException("WifiLocation", "id", req.getLocationId()));
+            dev.setLocation(loc);
+        } else {
+            dev.setLocation(null);
+        }
+
+        NetworkDevice saved = deviceRepository.save(dev);
+        auditService.recordEvent(
+                AuditAction.LOCATION_UPDATE,
+                actorUsername != null ? actorUsername : "admin",
+                "internal",
+                "NETWORK_DEVICE",
+                saved.getId().toString(),
+                "Cập nhật thiết bị " + saved.getMacAddress()
+                        + (saved.getLocation() != null ? " -> điểm " + saved.getLocation().getName() : " (gỡ khỏi điểm)")
+        );
+        return toDto(saved);
+    }
+
+    public NetworkDeviceDto assignDeviceToLocation(Long id, com.wificaptive.devices.dto.AssignDeviceLocationRequest req, String actorUsername) {
+        NetworkDevice dev = deviceRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("NetworkDevice", "id", id));
+
+        if (req != null && req.getLocationId() != null) {
+            WifiLocation loc = locationRepository.findById(req.getLocationId())
+                    .orElseThrow(() -> new ResourceNotFoundException("WifiLocation", "id", req.getLocationId()));
+            dev.setLocation(loc);
+        } else {
+            dev.setLocation(null);
+        }
+
+        if (req != null && req.getName() != null) {
+            dev.setName(trimToNull(req.getName()));
+        }
+        if (req != null && req.getGwnNetworkId() != null) {
+            dev.setGwnNetworkId(trimToNull(req.getGwnNetworkId()));
+        }
+
+        NetworkDevice saved = deviceRepository.save(dev);
+        auditService.recordEvent(
+                AuditAction.LOCATION_UPDATE,
+                actorUsername != null ? actorUsername : "admin",
+                "internal",
+                "NETWORK_DEVICE",
+                saved.getId().toString(),
+                saved.getLocation() != null
+                        ? "Gán thiết bị " + saved.getMacAddress() + " vào điểm " + saved.getLocation().getName()
+                        : "Gỡ thiết bị " + saved.getMacAddress() + " khỏi điểm phát"
+        );
+        return toDto(saved);
+    }
+
+    private String normalizeMacAddress(String raw) {
+        if (raw == null) return null;
+        String hex = raw.replaceAll("[^0-9A-Fa-f]", "").toUpperCase();
+        if (hex.length() != 12) return null;
+        return String.format("%s:%s:%s:%s:%s:%s",
+                hex.substring(0, 2), hex.substring(2, 4), hex.substring(4, 6),
+                hex.substring(6, 8), hex.substring(8, 10), hex.substring(10, 12));
+    }
+
+    private String normalizeDeviceType(String raw) {
+        if (raw == null || raw.isBlank()) return "ACCESS_POINT";
+        String upper = raw.trim().toUpperCase();
+        if ("AP".equals(upper)) return "ACCESS_POINT";
+        return upper;
+    }
+
+    private String trimToNull(String val) {
+        return (val != null && !val.isBlank()) ? val.trim() : null;
     }
 
     /** DTO kèm nguồn dữ liệu giám sát, để giao diện không hiển thị số liệu tĩnh như dữ liệu trực tiếp. */
@@ -329,7 +487,9 @@ public class NetworkDeviceService {
         NetworkDevice dev = deviceRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("NetworkDevice", "id", id));
 
-        GwnRebootResult result = gwnCloudGatewayAdapter.rebootDeviceOnCloud(dev.getMacAddress());
+        GwnRebootResult result = (dev.getGwnNetworkId() != null && !dev.getGwnNetworkId().isBlank())
+                ? gwnCloudGatewayAdapter.rebootDeviceOnCloud(dev.getMacAddress(), dev.getGwnNetworkId())
+                : gwnCloudGatewayAdapter.rebootDeviceOnCloud(dev.getMacAddress());
         if (!result.isSuccess()) {
             throw new BadRequestException("Không thể gửi lệnh khởi động lại: " + result.getMessage());
         }
@@ -352,6 +512,7 @@ public class NetworkDeviceService {
 
     public List<com.wificaptive.gateway.dto.GwnClientDto> getConnectedClients(Long deviceId) {
         String apMac = null;
+        String networkIdOverride = null;
         if (deviceId != null) {
             NetworkDevice dev = deviceRepository.findById(deviceId).orElse(null);
             if (dev != null && MeshApMonitorService.isMeshAp(dev)) {
@@ -363,9 +524,14 @@ public class NetworkDeviceService {
                                 dev.getModel(), c.band(), c.rssi(), 0L, 0L, 0L))
                         .toList();
             }
-            apMac = dev != null ? dev.getMacAddress() : null;
+            if (dev != null) {
+                apMac = dev.getMacAddress();
+                networkIdOverride = dev.getGwnNetworkId();
+            }
         }
-        return gwnCloudGatewayAdapter.getConnectedClientsFromCloud(apMac);
+        return (networkIdOverride != null && !networkIdOverride.isBlank())
+                ? gwnCloudGatewayAdapter.getConnectedClientsFromCloud(apMac, networkIdOverride)
+                : gwnCloudGatewayAdapter.getConnectedClientsFromCloud(apMac);
     }
 
     public com.wificaptive.gateway.dto.GwnUpgradeResult upgradeFirmware(List<Long> deviceIds, String targetFirmware, String actor) {

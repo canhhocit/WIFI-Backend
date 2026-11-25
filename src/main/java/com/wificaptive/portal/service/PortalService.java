@@ -368,7 +368,7 @@ public class PortalService {
         if (!existingActive.isEmpty()) {
             for (GuestSession prior : existingActive) {
                 log.info("Closing previous session {} for MAC {} due to re-authentication", prior.getId(), macAddress);
-                gatewayAdapter.revokeSession(prior.getId(), macAddress, clientIp, prior.getGatewayReference());
+                revokeGatewayForLocation(prior.getId(), macAddress, clientIp, prior.getGatewayReference(), prior.getLocation());
                 prior.setStatus(SessionStatus.EXPIRED);
             }
             sessionRepository.saveAll(existingActive);
@@ -400,16 +400,17 @@ public class PortalService {
 
         GuestSession savedSession = sessionRepository.save(session);
 
-        // 2. Invoke Gateway Adapter for network authorization
-        log.info("Requesting gateway authorization for session {} (MAC: {}, IP: {}, Duration: {}m)...",
-                savedSession.getId(), macAddress, clientIp, location.getSessionDurationMinutes());
+        // 2. Invoke Gateway Adapter for network authorization (resolve Router GWN dynamically by location)
+        log.info("Requesting gateway authorization for session {} (MAC: {}, IP: {}, Duration: {}m, Location: {})...",
+                savedSession.getId(), macAddress, clientIp, location.getSessionDurationMinutes(), location.getSlug());
 
-        GatewayAuthResult authResult = gatewayAdapter.authorizeSession(
+        GatewayAuthResult authResult = authorizeGatewayForLocation(
                 savedSession.getId(),
                 macAddress,
                 clientIp,
                 location.getSessionDurationMinutes(),
-                location.getMaxBandwidthMbps()
+                location.getMaxBandwidthMbps(),
+                location
         );
 
         GuestLoginResponse response = new GuestLoginResponse();
@@ -532,6 +533,61 @@ public class PortalService {
         }
 
         return getGuestSessionStatus(token);
+    }
+
+    private GatewayAuthResult authorizeGatewayForLocation(
+            Long sessionId,
+            String clientMac,
+            String clientIp,
+            Integer durationMinutes,
+            Integer maxBandwidthMbps,
+            WifiLocation location
+    ) {
+        if (gatewayAdapter instanceof com.wificaptive.gateway.adapter.GwnCloudGatewayAdapter gwnAdapter) {
+            com.wificaptive.devices.entity.NetworkDevice router = resolvePrimaryRouter(location);
+            String routerMac = router != null ? router.getMacAddress() : null;
+            String netId = router != null ? router.getGwnNetworkId() : null;
+            return gwnAdapter.authorizeSessionForRouter(
+                    sessionId, clientMac, clientIp, durationMinutes, maxBandwidthMbps, routerMac, netId);
+        }
+        return gatewayAdapter.authorizeSession(sessionId, clientMac, clientIp, durationMinutes, maxBandwidthMbps);
+    }
+
+    private void revokeGatewayForLocation(
+            Long sessionId,
+            String clientMac,
+            String clientIp,
+            String gatewayReference,
+            WifiLocation location
+    ) {
+        if (gatewayAdapter instanceof com.wificaptive.gateway.adapter.GwnCloudGatewayAdapter gwnAdapter) {
+            com.wificaptive.devices.entity.NetworkDevice router = resolvePrimaryRouter(location);
+            String routerMac = router != null ? router.getMacAddress() : null;
+            String netId = router != null ? router.getGwnNetworkId() : null;
+            gwnAdapter.revokeSessionForRouter(sessionId, clientMac, clientIp, gatewayReference, routerMac, netId);
+            return;
+        }
+        gatewayAdapter.revokeSession(sessionId, clientMac, clientIp, gatewayReference);
+    }
+
+    private com.wificaptive.devices.entity.NetworkDevice resolvePrimaryRouter(WifiLocation location) {
+        if (location == null || location.getId() == null || networkDeviceRepository == null) {
+            return null;
+        }
+        try {
+            List<com.wificaptive.devices.entity.NetworkDevice> routers =
+                    networkDeviceRepository.findByLocationIdAndDeviceType(location.getId(), "ROUTER");
+            if (routers == null || routers.isEmpty()) {
+                return null;
+            }
+            return routers.stream()
+                    .filter(r -> "ONLINE".equalsIgnoreCase(r.getStatus()))
+                    .findFirst()
+                    .orElse(routers.get(0));
+        } catch (Exception e) {
+            log.debug("Could not resolve primary router for location {}: {}", location.getId(), e.getMessage());
+            return null;
+        }
     }
 
     private String resolveClientIp(HttpServletRequest request) {

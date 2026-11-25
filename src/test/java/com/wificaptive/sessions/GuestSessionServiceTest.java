@@ -196,4 +196,54 @@ class GuestSessionServiceTest {
         assertEquals(SessionStatus.AUTHORIZED, unreachableSession.getStatus());
         verify(sessionRepository).saveAll(any());
     }
+
+    @Test
+    void testEnforceHardwareMacBlock_RevokesActiveSessionsAndBlocksOnCloud() {
+        var cloudAdapter = mock(com.wificaptive.gateway.adapter.GwnCloudGatewayAdapter.class);
+        var meshMonitor = mock(com.wificaptive.devices.mesh.MeshApMonitorService.class);
+        GuestSessionService blockService = new GuestSessionService(
+                sessionRepository, gatewayAdapter, auditService, accessLogRetentionService,
+                cloudAdapter, meshMonitor, 15, 3);
+
+        GuestSession active = new GuestSession();
+        active.setId(88L);
+        active.setSessionToken("sess_block_88");
+        active.setMacAddress("aa:bb:cc:11:22:33");
+        active.setIpAddress("192.168.80.120");
+        active.setGatewayReference("GWN-BP-88");
+        active.setStatus(SessionStatus.AUTHORIZED);
+
+        when(sessionRepository.findAuthorizedByCleanMac("AABBCC112233")).thenReturn(List.of(active));
+        when(gatewayAdapter.revokeSession(88L, "aa:bb:cc:11:22:33", "192.168.80.120", "GWN-BP-88"))
+                .thenReturn(GatewayRevokeResult.success(false, "Revoked", 10));
+
+        int revoked = blockService.enforceHardwareMacBlock("aa:bb:cc:11:22:33", "admin", "Spam");
+
+        assertEquals(1, revoked);
+        assertEquals(SessionStatus.REVOKED, active.getStatus());
+        assertEquals("admin", active.getRevokedBy());
+        assertEquals("Spam", active.getRevokeReason());
+        verify(sessionRepository).saveAll(List.of(active));
+        verify(cloudAdapter).blockMacAtHardwareLevel("aa:bb:cc:11:22:33");
+    }
+
+    @Test
+    void testEnforceHardwareMacBlock_NoActiveDbSession_StillRevokesBypassAndBlocksHardware() {
+        var cloudAdapter = mock(com.wificaptive.gateway.adapter.GwnCloudGatewayAdapter.class);
+        var meshMonitor = mock(com.wificaptive.devices.mesh.MeshApMonitorService.class);
+        GuestSessionService blockService = new GuestSessionService(
+                sessionRepository, gatewayAdapter, auditService, accessLogRetentionService,
+                cloudAdapter, meshMonitor, 15, 3);
+
+        when(sessionRepository.findAuthorizedByCleanMac("112233445566")).thenReturn(List.of());
+
+        int revoked = blockService.enforceHardwareMacBlock("11:22:33:44:55:66", "admin", "Manual block");
+
+        assertEquals(0, revoked);
+        verify(gatewayAdapter).revokeSession(null, "11:22:33:44:55:66", null, "MANUAL_MAC_BLOCK");
+        verify(cloudAdapter).blockMacAtHardwareLevel("11:22:33:44:55:66");
+
+        blockService.releaseHardwareMacBlock("11:22:33:44:55:66");
+        verify(cloudAdapter).unblockMacAtHardwareLevel("11:22:33:44:55:66");
+    }
 }

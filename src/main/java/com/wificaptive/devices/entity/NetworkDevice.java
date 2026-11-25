@@ -19,6 +19,12 @@ public class NetworkDevice {
     @Column(name = "device_type", nullable = false, length = 30)
     private String deviceType; // ONT, ROUTER, ACCESS_POINT
 
+    @Column(length = 150)
+    private String name;
+
+    @Column(name = "gwn_network_id", length = 50)
+    private String gwnNetworkId;
+
     @Column(name = "serial_number", nullable = false, unique = true, length = 100)
     private String serialNumber;
 
@@ -92,6 +98,12 @@ public class NetworkDevice {
 
     public String getDeviceType() { return deviceType; }
     public void setDeviceType(String deviceType) { this.deviceType = deviceType; }
+
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
+
+    public String getGwnNetworkId() { return gwnNetworkId; }
+    public void setGwnNetworkId(String gwnNetworkId) { this.gwnNetworkId = gwnNetworkId; }
 
     public String getSerialNumber() { return serialNumber; }
     public void setSerialNumber(String serialNumber) { this.serialNumber = serialNumber; }

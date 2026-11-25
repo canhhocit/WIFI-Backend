@@ -51,7 +51,16 @@ public class AnalyticsService {
         long activeSessions = sessionRepository.countActiveSessions(now);
         long todaySessions = sessionRepository.countSessionsSince(startOfToday);
         long totalLocations = locationRepository.countByDeletedFalse();
-        long activeLocations = locationRepository.countByActiveTrueAndDeletedFalse();
+        List<NetworkDevice> netDevs = networkDeviceRepository.findAll();
+        Set<Long> onlineRouterLocationIds = netDevs.stream()
+                .filter(d -> d.getLocationId() != null
+                        && "ROUTER".equalsIgnoreCase(d.getDeviceType())
+                        && "ONLINE".equalsIgnoreCase(d.getStatus()))
+                .map(NetworkDevice::getLocationId)
+                .collect(java.util.stream.Collectors.toSet());
+        long activeLocations = locationRepository.findByActiveTrueAndDeletedFalse().stream()
+                .filter(loc -> onlineRouterLocationIds.contains(loc.getId()))
+                .count();
         long totalDevices = deviceRepository.count();
 
         // Status breakdown
@@ -90,7 +99,6 @@ public class AnalyticsService {
         dto.setLocationDistribution(locationDistribution);
 
         // Topology metrics calculation
-        List<NetworkDevice> netDevs = networkDeviceRepository.findAll();
         long routerOnline = netDevs.stream().filter(d -> "ROUTER".equalsIgnoreCase(d.getDeviceType()) && "ONLINE".equalsIgnoreCase(d.getStatus())).count();
         long routerOffline = netDevs.stream().filter(d -> "ROUTER".equalsIgnoreCase(d.getDeviceType()) && !"ONLINE".equalsIgnoreCase(d.getStatus())).count();
 

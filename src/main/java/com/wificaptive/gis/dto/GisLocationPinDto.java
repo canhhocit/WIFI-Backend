@@ -18,6 +18,7 @@ public class GisLocationPinDto {
     private int activeSessionsCount;
     private int totalDevices;
     private int onlineDevices;
+    private boolean hasGwnRouter;
     private int openIncidentsCount;
 
     public Long getId() { return id; }
@@ -54,6 +55,8 @@ public class GisLocationPinDto {
     public void setTotalDevices(int totalDevices) { this.totalDevices = totalDevices; }
     public int getOnlineDevices() { return onlineDevices; }
     public void setOnlineDevices(int onlineDevices) { this.onlineDevices = onlineDevices; }
+    public boolean isHasGwnRouter() { return hasGwnRouter; }
+    public void setHasGwnRouter(boolean hasGwnRouter) { this.hasGwnRouter = hasGwnRouter; }
     public int getOpenIncidentsCount() { return openIncidentsCount; }
     public void setOpenIncidentsCount(int openIncidentsCount) { this.openIncidentsCount = openIncidentsCount; }
 }

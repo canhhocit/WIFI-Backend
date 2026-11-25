@@ -9,6 +9,8 @@ public class NetworkDeviceDto {
     private String locationName;
     private String locationCode;
     private String adminUnitName;
+    private String name;
+    private String gwnNetworkId;
     private String deviceType;
     private String serialNumber;
     private String macAddress;
@@ -40,6 +42,8 @@ public class NetworkDeviceDto {
                 dto.setAdminUnitName(dev.getLocation().getAdminUnit().getName());
             }
         }
+        dto.setName(dev.getName());
+        dto.setGwnNetworkId(dev.getGwnNetworkId());
         dto.setDeviceType(dev.getDeviceType());
         dto.setSerialNumber(dev.getSerialNumber());
         dto.setMacAddress(dev.getMacAddress());
@@ -72,6 +76,12 @@ public class NetworkDeviceDto {
 
     public String getAdminUnitName() { return adminUnitName; }
     public void setAdminUnitName(String adminUnitName) { this.adminUnitName = adminUnitName; }
+
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
+
+    public String getGwnNetworkId() { return gwnNetworkId; }
+    public void setGwnNetworkId(String gwnNetworkId) { this.gwnNetworkId = gwnNetworkId; }
 
     public String getDeviceType() { return deviceType; }
     public void setDeviceType(String deviceType) { this.deviceType = deviceType; }
