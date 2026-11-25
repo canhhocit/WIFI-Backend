@@ -29,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -313,6 +314,47 @@ public class NetworkDeviceService {
             throw new BadRequestException("Thiết bị không phải mesh AP Viettel HomeWiFi: " + dev.getModel());
         }
         return meshApMonitorService.getSnapshot(dev, refresh);
+    }
+
+    /**
+     * "AP theo cổng GWN": mỗi cổng LAN của router GWN đang cắm (hoặc đã gán mesh) = 1 AP của điểm.
+     * On/off đọc từ linkStatus cổng (device/info) — bảo trì biết ĐÚNG cổng (AP) nào chết, không cần MAC.
+     * Cổng nào đã gán mesh (import có cổng) thì kèm tên/MAC/IP; chưa gán thì chỉ hiện theo cổng.
+     */
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public Map<String, Object> getGwnPortStatus() {
+        com.wificaptive.gateway.dto.GwnRouterPorts ports = gwnCloudGatewayAdapter.fetchRouterPorts();
+        Map<String, NetworkDevice> meshByPort = new java.util.HashMap<>();
+        NetworkDevice gwnRouter = null;
+        for (NetworkDevice d : deviceRepository.findAll()) {
+            if ("ROUTER".equalsIgnoreCase(d.getDeviceType()) && gwnRouter == null) gwnRouter = d;
+            if (MeshApMonitorService.isMeshAp(d) && org.springframework.util.StringUtils.hasText(d.getGwnLanPort())) {
+                meshByPort.put(d.getGwnLanPort().trim(), d);
+            }
+        }
+        java.util.List<Map<String, Object>> list = new java.util.ArrayList<>();
+        for (Map.Entry<String, Boolean> e : ports.lanUpBySilk().entrySet()) {
+            boolean up = Boolean.TRUE.equals(e.getValue());
+            NetworkDevice mesh = meshByPort.get(e.getKey());
+            if (!up && mesh == null) continue; // cổng trống, chưa gán -> không phải AP
+            Map<String, Object> pm = new java.util.LinkedHashMap<>();
+            pm.put("port", e.getKey());
+            pm.put("label", "AP cổng LAN" + e.getKey());
+            pm.put("status", up ? "ONLINE" : "OFFLINE");
+            pm.put("meshName", mesh != null
+                    ? (org.springframework.util.StringUtils.hasText(mesh.getName()) ? mesh.getName() : mesh.getMacAddress())
+                    : null);
+            pm.put("meshMac", mesh != null ? mesh.getMacAddress() : null);
+            pm.put("meshIp", mesh != null ? mesh.getIpAddress() : null);
+            list.add(pm);
+        }
+        list.sort(java.util.Comparator.comparing(m -> (String) m.get("port")));
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("apiReachable", ports.apiReachable());
+        out.put("gwnName", gwnRouter != null ? gwnRouter.getName() : null);
+        out.put("siteName", gwnRouter != null && gwnRouter.getLocation() != null ? gwnRouter.getLocation().getName() : null);
+        out.put("ports", list);
+        return out;
     }
 
     public NetworkDeviceDto swapDevice(DeviceSwapRequest request, String actorUsername) {

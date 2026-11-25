@@ -45,6 +45,12 @@ public class NetworkDeviceController {
         return ResponseEntity.ok(ApiResponse.ok("Đã làm mới trạng thái " + updated + " mesh từ GWN Cloud", updated));
     }
 
+    /** "AP theo cổng GWN": on/off từng cổng LAN của GWN (biết đúng AP cổng nào chết, không cần MAC). */
+    @GetMapping("/gwn-ports")
+    public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> gwnPortStatus() {
+        return ResponseEntity.ok(ApiResponse.ok(deviceService.getGwnPortStatus()));
+    }
+
     @GetMapping
     public ResponseEntity<ApiResponse<PageResponse<NetworkDeviceDto>>> getDevices(
             @RequestParam(required = false) String type,
