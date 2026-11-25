@@ -67,6 +67,10 @@ public class MeshAgentController {
             m.put("host", d.getIpAddress().trim());
             m.put("status", d.getStatus());               // trạng thái hiện tại để chẩn đoán
             m.put("source", monitor.monitoringSource(d));  // nguồn: MESH_LIVE / GWN_ONLINE / GWN_OFFLINE...
+            try {
+                MeshApSnapshotDto snap = monitor.getSnapshot(d, false);
+                if (snap != null) m.put("reason", snap.message()); // lý do backend quyết định on/off
+            } catch (Exception ignored) { /* chẩn đoán phụ, không chặn targets */ }
             out.add(m);
         }
         return ResponseEntity.ok(Map.of("targets", out));
