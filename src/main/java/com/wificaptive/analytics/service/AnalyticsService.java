@@ -105,24 +105,29 @@ public class AnalyticsService {
         long switchOnline = netDevs.stream().filter(d -> "SWITCH".equalsIgnoreCase(d.getDeviceType()) && "ONLINE".equalsIgnoreCase(d.getStatus())).count();
         long switchOffline = netDevs.stream().filter(d -> "SWITCH".equalsIgnoreCase(d.getDeviceType()) && !"ONLINE".equalsIgnoreCase(d.getStatus())).count();
 
-        // AP theo mô hình "AP theo cổng GWN": mỗi điểm có router kỳ vọng 4 AP = 4 cổng LAN ON.
-        // AP Online = tổng số cổng LAN ON (active_ap_count cache theo điểm); Offline = số còn THIẾU so với kỳ vọng.
+        // AP theo mô hình "AP theo cổng GWN": kỳ vọng mỗi điểm = min(4, số cổng LAN thật của router).
+        // AP Online = tổng cổng LAN ON (active_ap_count); Offline = kỳ vọng - online. Nhất quán với panel theo cổng.
         // Không phụ thuộc AP có đăng ký trong DB hay không (zero-touch).
-        final int expectedApPerSite = 4;
+        final int targetApPerSite = 4;
         java.util.Set<Long> routerLocationIds = netDevs.stream()
                 .filter(d -> "ROUTER".equalsIgnoreCase(d.getDeviceType()) && d.getLocationId() != null)
                 .map(com.wificaptive.devices.entity.NetworkDevice::getLocationId)
                 .collect(java.util.stream.Collectors.toSet());
-        java.util.Map<Long, Integer> apCountByLoc = new java.util.HashMap<>();
+        java.util.Map<Long, Integer> apOnByLoc = new java.util.HashMap<>();
+        java.util.Map<Long, Integer> apTotalByLoc = new java.util.HashMap<>();
         for (com.wificaptive.locations.entity.WifiLocation loc : locationRepository.findByActiveTrueAndDeletedFalse()) {
-            if (loc.getActiveApCount() != null) apCountByLoc.put(loc.getId(), loc.getActiveApCount());
+            if (loc.getActiveApCount() != null) apOnByLoc.put(loc.getId(), loc.getActiveApCount());
+            if (loc.getApTotalCount() != null) apTotalByLoc.put(loc.getId(), loc.getApTotalCount());
         }
-        long apOnline = 0;
+        long apOnline = 0, apExpected = 0;
         for (Long locId : routerLocationIds) {
-            Integer c = apCountByLoc.get(locId);
-            if (c != null) apOnline += Math.max(0, c);
+            int on = Math.max(0, apOnByLoc.getOrDefault(locId, 0));
+            Integer total = apTotalByLoc.get(locId);
+            // kỳ vọng = min(4, số cổng thật); chưa có dữ liệu cổng -> tạm dùng 4.
+            int expected = total != null ? Math.min(targetApPerSite, Math.max(0, total)) : targetApPerSite;
+            apOnline += on;
+            apExpected += expected;
         }
-        long apExpected = (long) expectedApPerSite * routerLocationIds.size();
         long apOffline = Math.max(0, apExpected - apOnline); // số AP đang thiếu/off so với kỳ vọng
         long apUnmonitored = 0;
 

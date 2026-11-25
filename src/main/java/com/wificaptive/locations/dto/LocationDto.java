@@ -38,7 +38,9 @@ public class LocationDto {
     private int assignedDeviceCount;
     /** Số AP thực đang kết nối (= số cổng LAN ON của router GWN), cache từ scheduler. null = chưa có dữ liệu. */
     private Integer activeApCount;
-    /** Số AP kỳ vọng mỗi điểm (cố định 4 theo đề bài). */
+    /** Tổng số cổng LAN RJ45 của router điểm (cache). */
+    private Integer apTotalCount;
+    /** Số AP kỳ vọng mỗi điểm = min(4, số cổng LAN thật). Mặc định 4 khi chưa có dữ liệu cổng. */
     private int expectedApCount = 4;
     /** Tổng quan sức khỏe điểm: GREEN (đủ AP), ORANGE (thiếu AP), RED (router offline/mất kết nối hoặc 0 AP), GRAY (chưa có GWN). */
     private String healthStatus;
@@ -75,6 +77,11 @@ public class LocationDto {
         dto.setStatus(loc.getStatus() != null ? loc.getStatus() : (loc.isActive() ? "ACTIVE" : "INACTIVE"));
         dto.setStatusReason(loc.getStatusReason());
         dto.setActiveApCount(loc.getActiveApCount());
+        dto.setApTotalCount(loc.getApTotalCount());
+        // Kỳ vọng = min(4, số cổng LAN thật của router). GWN7002 có 3 cổng -> kỳ vọng 3; router >=4 cổng -> 4.
+        if (loc.getApTotalCount() != null) {
+            dto.setExpectedApCount(Math.min(4, Math.max(0, loc.getApTotalCount())));
+        }
         dto.setIspName(loc.getIspName());
         dto.setCircuitCode(loc.getCircuitCode());
         dto.setContactName(loc.getContactName());
@@ -292,6 +299,9 @@ public class LocationDto {
 
     public Integer getActiveApCount() { return activeApCount; }
     public void setActiveApCount(Integer activeApCount) { this.activeApCount = activeApCount; }
+
+    public Integer getApTotalCount() { return apTotalCount; }
+    public void setApTotalCount(Integer apTotalCount) { this.apTotalCount = apTotalCount; }
 
     public int getExpectedApCount() { return expectedApCount; }
     public void setExpectedApCount(int expectedApCount) { this.expectedApCount = expectedApCount; }

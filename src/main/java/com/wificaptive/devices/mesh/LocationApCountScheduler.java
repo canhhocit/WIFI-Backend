@@ -51,10 +51,11 @@ public class LocationApCountScheduler {
                 GwnRouterPorts ports = gwnCloud.fetchRouterPorts(mac, d.getGwnNetworkId());
                 if (!ports.apiReachable()) { unreachable++; continue; } // không ghi đè khi không đọc được
                 int on = 0;
+                int total = ports.lanUpBySilk().size(); // tổng cổng LAN RJ45 (đã loại SFP ở parseRouterPorts)
                 for (Boolean up : ports.lanUpBySilk().values()) {
                     if (Boolean.TRUE.equals(up)) on++;
                 }
-                locationRepository.updateActiveApCount(d.getLocationId(), on);
+                locationRepository.updateApCounts(d.getLocationId(), on, total);
                 updated++;
             } catch (Exception e) {
                 log.debug("[LocationApCount] Lỗi đọc cổng router {} (điểm {}): {}", d.getMacAddress(), d.getLocationId(), e.getMessage());

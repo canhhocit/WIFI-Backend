@@ -350,29 +350,26 @@ public class NetworkDeviceService {
                         gwnRouter.getMacAddress() != null ? gwnRouter.getMacAddress().replaceAll("[^0-9A-Fa-f]", "") : null,
                         gwnRouter.getGwnNetworkId())
                 : gwnCloudGatewayAdapter.fetchRouterPorts();
-        // Mô hình: mỗi điểm kỳ vọng EXPECTED_AP (4) AP = 4 cổng LAN ON. Đếm số cổng đang ON.
-        final int expectedAp = 4;
+        // Kỳ vọng = min(4, số cổng LAN thật). Luôn hiện cổng ON + cổng đã gán mesh; bổ sung cổng TRỐNG
+        // đang OFF cho đủ "kỳ vọng" slot (để lộ AP còn thiếu), và ẨN cổng trống dư trên router nhiều cổng.
         int onCount = 0;
         for (Boolean v : ports.lanUpBySilk().values()) if (Boolean.TRUE.equals(v)) onCount++;
+        final int effectiveExpected = Math.min(4, ports.lanUpBySilk().size());
 
         java.util.List<Map<String, Object>> list = new java.util.ArrayList<>();
-        // Luôn hiện: cổng ON và cổng đã gán mesh. Cổng TRỐNG đang down chỉ hiện khi CÒN THIẾU AP
-        // (onCount < 4) để lộ đúng chỗ thiếu; khi đã đủ (>=4) thì ẩn cổng trống thừa -> router nhiều
-        // cổng (7-8 LAN) không hiển thị hàng loạt OFFLINE giả, chỉ cần 4 cổng ON là "đủ", không báo lỗi.
+        java.util.List<Map.Entry<String, Boolean>> unboundOff = new java.util.ArrayList<>();
         for (Map.Entry<String, Boolean> e : ports.lanUpBySilk().entrySet()) {
             boolean up = Boolean.TRUE.equals(e.getValue());
             NetworkDevice mesh = meshByPort.get(e.getKey());
-            if (!up && mesh == null && onCount >= expectedAp) continue;
-            Map<String, Object> pm = new java.util.LinkedHashMap<>();
-            pm.put("port", e.getKey());
-            pm.put("label", "AP cổng LAN" + e.getKey());
-            pm.put("status", up ? "ONLINE" : "OFFLINE");
-            pm.put("meshName", mesh != null
-                    ? (org.springframework.util.StringUtils.hasText(mesh.getName()) ? mesh.getName() : mesh.getMacAddress())
-                    : null);
-            pm.put("meshMac", mesh != null ? mesh.getMacAddress() : null);
-            pm.put("meshIp", mesh != null ? mesh.getIpAddress() : null);
-            list.add(pm);
+            if (!up && mesh == null) { unboundOff.add(e); continue; } // để lọc sau (chỉ hiện đủ số slot thiếu)
+            list.add(portCard(e.getKey(), up, mesh));
+        }
+        // Bổ sung cổng trống OFF cho đủ "kỳ vọng" slot (phần còn thiếu), ẩn phần dư.
+        int slotsLeft = effectiveExpected - list.size();
+        for (Map.Entry<String, Boolean> e : unboundOff) {
+            if (slotsLeft <= 0) break;
+            list.add(portCard(e.getKey(), false, null));
+            slotsLeft--;
         }
         list.sort(java.util.Comparator.comparing(m -> (String) m.get("port")));
         Map<String, Object> out = new java.util.LinkedHashMap<>();
@@ -381,6 +378,20 @@ public class NetworkDeviceService {
         out.put("siteName", gwnRouter != null && gwnRouter.getLocation() != null ? gwnRouter.getLocation().getName() : null);
         out.put("ports", list);
         return out;
+    }
+
+    /** Một thẻ cổng AP cho panel "AP theo cổng GWN". */
+    private Map<String, Object> portCard(String silk, boolean up, NetworkDevice mesh) {
+        Map<String, Object> pm = new java.util.LinkedHashMap<>();
+        pm.put("port", silk);
+        pm.put("label", "AP cổng LAN" + silk);
+        pm.put("status", up ? "ONLINE" : "OFFLINE");
+        pm.put("meshName", mesh != null
+                ? (org.springframework.util.StringUtils.hasText(mesh.getName()) ? mesh.getName() : mesh.getMacAddress())
+                : null);
+        pm.put("meshMac", mesh != null ? mesh.getMacAddress() : null);
+        pm.put("meshIp", mesh != null ? mesh.getIpAddress() : null);
+        return pm;
     }
 
     public NetworkDeviceDto swapDevice(DeviceSwapRequest request, String actorUsername) {

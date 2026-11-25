@@ -18,10 +18,10 @@ public interface WifiLocationRepository extends JpaRepository<WifiLocation, Long
     Optional<WifiLocation> findBySlug(String slug);
     Optional<WifiLocation> findByLocationCode(String locationCode);
 
-    /** Cache số cổng LAN ON (= số AP thực) của điểm, do scheduler nền ghi; tránh gọi GWN khi hiển thị danh sách. */
+    /** Cache số cổng LAN ON + tổng cổng LAN của điểm, do scheduler nền ghi; tránh gọi GWN khi hiển thị danh sách. */
     @Modifying
-    @Query("UPDATE WifiLocation l SET l.activeApCount = :cnt WHERE l.id = :id")
-    void updateActiveApCount(@Param("id") Long id, @Param("cnt") Integer cnt);
+    @Query("UPDATE WifiLocation l SET l.activeApCount = :on, l.apTotalCount = :total WHERE l.id = :id")
+    void updateApCounts(@Param("id") Long id, @Param("on") Integer on, @Param("total") Integer total);
     Optional<WifiLocation> findBySlugAndDeletedFalse(String slug);
     Optional<WifiLocation> findByLocationCodeAndDeletedFalse(String locationCode);
     boolean existsBySlug(String slug);

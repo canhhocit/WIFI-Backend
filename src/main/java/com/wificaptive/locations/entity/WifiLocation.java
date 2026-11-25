@@ -69,6 +69,10 @@ public class WifiLocation extends BaseEntity {
     @Column(name = "active_ap_count")
     private Integer activeApCount;
 
+    /** Tổng số cổng LAN RJ45 của router GWN (để tính kỳ vọng = min(4, tổng cổng)), do scheduler cập nhật. */
+    @Column(name = "ap_total_count")
+    private Integer apTotalCount;
+
     @Column(name = "status_reason", length = 255)
     private String statusReason;
 
@@ -208,6 +212,9 @@ public class WifiLocation extends BaseEntity {
 
     public Integer getActiveApCount() { return activeApCount; }
     public void setActiveApCount(Integer activeApCount) { this.activeApCount = activeApCount; }
+
+    public Integer getApTotalCount() { return apTotalCount; }
+    public void setApTotalCount(Integer apTotalCount) { this.apTotalCount = apTotalCount; }
 
     public String getStatusReason() { return statusReason; }
     public void setStatusReason(String statusReason) { this.statusReason = statusReason; }
