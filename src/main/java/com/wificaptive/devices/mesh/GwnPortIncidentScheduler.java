@@ -52,9 +52,12 @@ public class GwnPortIncidentScheduler {
         if (!ports.apiReachable() || !ports.hasLanInfo()) return;
 
         NetworkDevice gwnRouter = null;
+        List<NetworkDevice> routers = deviceRepository.findRouters();
+        if (!routers.isEmpty()) {
+            gwnRouter = routers.get(0);
+        }
         Set<String> boundPorts = new HashSet<>();
-        for (NetworkDevice d : deviceRepository.findAll()) {
-            if (gwnRouter == null && "ROUTER".equalsIgnoreCase(d.getDeviceType())) gwnRouter = d;
+        for (NetworkDevice d : deviceRepository.findAccessPoints()) {
             if (MeshApMonitorService.isMeshAp(d) && StringUtils.hasText(d.getGwnLanPort())) {
                 boundPorts.add(d.getGwnLanPort().trim());
             }

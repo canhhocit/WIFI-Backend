@@ -492,9 +492,7 @@ public class NetworkDeviceService {
             String cleanMac = normMac.replaceAll("[^A-F0-9]", "");
 
             NetworkDevice dev = deviceRepository.findByMacAddress(normMac)
-                    .or(() -> deviceRepository.findAll().stream()
-                            .filter(d -> d.getMacAddress().replaceAll("[^A-F0-9]", "").equalsIgnoreCase(cleanMac))
-                            .findFirst())
+                    .or(() -> deviceRepository.findByCleanMac(cleanMac.toLowerCase()))
                     .orElse(null);
 
             if (dev != null) {
@@ -707,9 +705,7 @@ public class NetworkDeviceService {
         String cleanMac = rawMac.replaceAll("[^A-Fa-f0-9]", "").toUpperCase();
 
         NetworkDevice dev = deviceRepository.findByMacAddress(rawMac)
-                .or(() -> deviceRepository.findAll().stream()
-                        .filter(d -> d.getMacAddress().replaceAll("[^A-Fa-f0-9]", "").equalsIgnoreCase(cleanMac))
-                        .findFirst())
+                .or(() -> deviceRepository.findByCleanMac(cleanMac.toLowerCase()))
                 .orElse(null);
 
         if (dev == null) {

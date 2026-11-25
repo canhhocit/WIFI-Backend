@@ -17,6 +17,9 @@ public interface NetworkDeviceRepository extends JpaRepository<NetworkDevice, Lo
 
     Optional<NetworkDevice> findByMacAddress(String macAddress);
 
+    @Query("SELECT d FROM NetworkDevice d WHERE LOWER(REPLACE(REPLACE(d.macAddress, ':', ''), '-', '')) = LOWER(:cleanMac)")
+    Optional<NetworkDevice> findByCleanMac(@Param("cleanMac") String cleanMac);
+
     Optional<NetworkDevice> findBySerialNumber(String serialNumber);
 
     boolean existsByMacAddress(String macAddress);
