@@ -146,4 +146,36 @@ class MeshApMonitorServiceTest {
         assertEquals("OFFLINE", device.getStatus());
         verify(incidents).recordDeviceFailureIncident(any(), eq(7L), anyString(), eq("24:0B:2B:47:2A:22"), anyString());
     }
+
+    /** Máy chủ (như SIT) không đọc trực tiếp mesh, không có agent -> on/off lấy từ GWN Cloud. */
+    private MeshApMonitorService siteWithoutDirect() {
+        return new MeshApMonitorService(client, repo, incidents, txm, false, "admin", "", true);
+    }
+
+    @Test
+    void gwnCloudStatusDrivesMeshOnOff() {
+        MeshApMonitorService svc = siteWithoutDirect();
+
+        svc.ingestGwnStatus(device, true, "thấy");
+        assertEquals("ONLINE", device.getStatus());
+        assertEquals(MeshApMonitorService.SOURCE_GWN_ONLINE, svc.monitoringSource(device));
+
+        device.setStatus("ONLINE");
+        svc.ingestGwnStatus(device, false, "không thấy");
+        assertEquals("OFFLINE", device.getStatus());
+        assertEquals(MeshApMonitorService.SOURCE_GWN_OFFLINE, svc.monitoringSource(device));
+        verify(incidents, atLeastOnce())
+                .recordDeviceFailureIncident(any(), eq(7L), anyString(), eq("24:0B:2B:47:2A:22"), anyString());
+    }
+
+    @Test
+    void agentDataWinsOverGwnStatus() {
+        MeshApMonitorService svc = siteWithoutDirect();
+        svc.ingestFromAgent(device, live());           // agent báo LIVE -> ONLINE
+        assertEquals("ONLINE", device.getStatus());
+
+        svc.ingestGwnStatus(device, false, "không thấy"); // GWN báo off nhưng agent đang feed -> bỏ qua
+        assertEquals("ONLINE", device.getStatus());
+        assertEquals(MeshApMonitorService.SOURCE_MESH_LIVE, svc.monitoringSource(device));
+    }
 }

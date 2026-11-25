@@ -107,6 +107,11 @@ app:
     # tự báo (MAC/S-N/model), thay cho khai báo tay từng điểm. Giúp triển khai 1500 điểm không cần
     # seed cứng và không cần phần cứng thu thập riêng. Đặt false nếu chỉ muốn nhận AP đã khai báo sẵn.
     agent-auto-provision: ${MESH_AGENT_AUTO_PROVISION:true}
+    # Suy ra on/off của mesh từ Grandstream GWN Cloud (client/info): mesh IP tĩnh vẫn hiện như client
+    # nối cổng LAN của GWN7002 -> thấy=ONLINE, không thấy=OFFLINE. Chỉ áp cho mesh không có agent tại chỗ.
+    # Lấy on/off tập trung qua GDMS cloud, không cần đăng nhập từng mesh, scale nhiều điểm không thêm phần cứng.
+    gwn-status-enabled: ${MESH_GWN_STATUS_ENABLED:true}
+    gwn-poll-interval-ms: ${MESH_GWN_POLL_INTERVAL_MS:120000}
     timeout-ms: ${MESH_AP_TIMEOUT_MS:5000}
     radius:
       enabled: ${RADIUS_ENABLED:true}

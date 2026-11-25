@@ -36,6 +36,9 @@ public class MeshApMonitorService {
 
     public static final String SOURCE_MESH_LIVE = "MESH_LIVE";
     public static final String SOURCE_NOT_MONITORED = "NOT_MONITORED";
+    /** On/off suy ra từ Grandstream GWN Cloud (mesh hiện như client nối cổng LAN của GWN7002). */
+    public static final String SOURCE_GWN_ONLINE = "GWN_ONLINE";
+    public static final String SOURCE_GWN_OFFLINE = "GWN_OFFLINE";
 
     private final MeshApClient client;
     private final NetworkDeviceRepository deviceRepository;
@@ -51,6 +54,10 @@ public class MeshApMonitorService {
     /** Thời điểm nhận dữ liệu gần nhất từ agent thu thập tại chỗ (AP không đọc trực tiếp từ máy chủ). */
     private final Map<Long, Instant> agentReceivedAt = new ConcurrentHashMap<>();
     private final java.time.Duration agentStaleAfter;
+
+    /** Trạng thái on/off mới nhất suy ra từ Grandstream GWN Cloud (chỉ on/off, không có telemetry). */
+    private final Map<Long, GwnStatus> gwnStatus = new ConcurrentHashMap<>();
+    private record GwnStatus(boolean online, Instant at, String message) {}
 
     @org.springframework.beans.factory.annotation.Autowired
     public MeshApMonitorService(MeshApClient client,
@@ -81,7 +88,7 @@ public class MeshApMonitorService {
     }
 
     /** AP đang được agent tại chỗ báo cáo (dữ liệu còn mới). */
-    private boolean isAgentFed(Long deviceId) {
+    public boolean isAgentFed(Long deviceId) {
         Instant at = agentReceivedAt.get(deviceId);
         return at != null && at.isAfter(Instant.now().minus(agentStaleAfter));
     }
@@ -103,9 +110,18 @@ public class MeshApMonitorService {
     /** Nguồn dữ liệu trạng thái của AP để giao diện hiển thị đúng (không coi số liệu tĩnh là trực tiếp). */
     public String monitoringSource(NetworkDevice d) {
         if (!isMeshAp(d)) return SOURCE_NOT_MONITORED;
-        if (!enabled && !agentReceivedAt.containsKey(d.getId())) return SOURCE_NOT_MONITORED;
-        MeshApSnapshotDto s = snapshots.get(d.getId());
-        if (s == null) return "MESH_PENDING";
+        Long id = d.getId();
+        GwnStatus g = id != null ? gwnStatus.get(id) : null;
+        if (!enabled && (id == null || !agentReceivedAt.containsKey(id))) {
+            // Máy chủ không đọc trực tiếp và không có agent -> dùng on/off từ GWN Cloud nếu có
+            if (g != null) return g.online() ? SOURCE_GWN_ONLINE : SOURCE_GWN_OFFLINE;
+            return SOURCE_NOT_MONITORED;
+        }
+        MeshApSnapshotDto s = snapshots.get(id);
+        if (s == null) {
+            if (g != null) return g.online() ? SOURCE_GWN_ONLINE : SOURCE_GWN_OFFLINE;
+            return "MESH_PENDING";
+        }
         return s.isLive() ? SOURCE_MESH_LIVE : "MESH_" + s.monitoringMode();
     }
 
@@ -147,6 +163,12 @@ public class MeshApMonitorService {
         if (!enabled || agentReceivedAt.containsKey(device.getId())) {
             MeshApSnapshotDto fromAgent = agentReceivedAt.containsKey(device.getId()) ? snapshots.get(device.getId()) : null;
             if (fromAgent != null) return fromAgent;
+            GwnStatus g = gwnStatus.get(device.getId());
+            if (g != null) {
+                return MeshApSnapshotDto.status(device.getId(), device.getIpAddress(),
+                        g.online() ? SOURCE_GWN_ONLINE : SOURCE_GWN_OFFLINE, g.message(),
+                        g.online() ? g.at() : null);
+            }
             return MeshApSnapshotDto.status(device.getId(), device.getIpAddress(), "DISABLED",
                     "Máy chủ này chưa bật giám sát mesh trực tiếp (cần đường mạng VPN/LAN tới điểm phát và app.mesh-ap.enabled=true).",
                     null);
@@ -240,6 +262,41 @@ public class MeshApMonitorService {
                     (dev.getModel() != null ? dev.getModel() : "Mesh AP") + " - " + locName,
                     dev.getMacAddress(),
                     "Mesh AP mất kết nối: " + s.message());
+        }
+    }
+
+    /**
+     * Nhận on/off của mesh suy ra từ Grandstream GWN Cloud (endpoint client/info): mesh để IP tĩnh
+     * vẫn hiện như client nối cổng LAN của GWN7002 -> thấy = ONLINE, không thấy = OFFLINE.
+     * Dùng khi máy chủ không đọc trực tiếp được mesh và không có agent tại chỗ. Nếu đang có agent
+     * (dữ liệu giàu hơn), bỏ qua để agent quyết định.
+     */
+    public void ingestGwnStatus(NetworkDevice device, boolean online, String message) {
+        Long id = device.getId();
+        if (id == null || isAgentFed(id)) return;
+        gwnStatus.put(id, new GwnStatus(online, Instant.now(), message));
+        tx.executeWithoutResult(st -> applyGwnStatusToDevice(id, online, message));
+    }
+
+    private void applyGwnStatusToDevice(Long id, boolean online, String message) {
+        NetworkDevice dev = deviceRepository.findById(id).orElse(null);
+        if (dev == null || isAgentFed(id)) return;
+        String oldStatus = dev.getStatus();
+        if (online) {
+            dev.setStatus("ONLINE");
+            dev.setLastSeenAt(Instant.now());
+        } else {
+            dev.setStatus("OFFLINE");
+        }
+        deviceRepository.save(dev);
+        if ("OFFLINE".equals(dev.getStatus()) && !"OFFLINE".equalsIgnoreCase(oldStatus)) {
+            String locName = dev.getLocation() != null ? dev.getLocation().getName() : "Nhà văn hóa";
+            incidentTicketService.recordDeviceFailureIncident(
+                    dev.getLocation() != null ? dev.getLocation().getId() : null,
+                    dev.getId(),
+                    (dev.getModel() != null ? dev.getModel() : "Mesh AP") + " - " + locName,
+                    dev.getMacAddress(),
+                    "Mesh AP không còn thấy trên Grandstream GWN Cloud: " + message);
         }
     }
 
