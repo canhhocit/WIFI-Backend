@@ -28,6 +28,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -560,7 +561,7 @@ public class IncidentTicketService {
 
         // Cache locations & tickets names to avoid N+1 queries
         Set<Long> pageLocIds = p.getContent().stream()
-                .map(com.wificaptive.incidents.entity.CitizenReport::getLocationId)
+                .map(CitizenIssueReport::getLocationId)
                 .filter(java.util.Objects::nonNull)
                 .collect(Collectors.toSet());
         Map<Long, String> locationNameMap = pageLocIds.isEmpty() ? Map.of() :
@@ -568,7 +569,7 @@ public class IncidentTicketService {
                         .collect(Collectors.toMap(WifiLocation::getId, WifiLocation::getName, (a, b) -> a));
 
         Set<Long> pageTicketIds = p.getContent().stream()
-                .map(com.wificaptive.incidents.entity.CitizenReport::getIncidentTicketId)
+                .map(CitizenIssueReport::getIncidentTicketId)
                 .filter(java.util.Objects::nonNull)
                 .collect(Collectors.toSet());
         Map<Long, String> ticketCodeMap = pageTicketIds.isEmpty() ? Map.of() :
