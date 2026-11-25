@@ -305,7 +305,62 @@ public class IncidentTicketService {
         return resolvedCount;
     }
 
-  
+    /**
+     * Tự động đóng (RESOLVED) các phiếu sự cố PHẦN CỨNG tự tạo của ĐÚNG một thiết bị khi thiết bị đó
+     * ONLINE trở lại. Dùng cho mesh định danh theo MAC (deviceId = id mesh) — chính xác từng AP, không
+     * phải chờ cả điểm khôi phục như {@link #autoResolveRecoveredIncidents()}.
+     */
+    @Transactional
+    public int resolveDeviceRecoveredIncidents(Long deviceId, String note) {
+        if (deviceId == null) return 0;
+        List<IncidentTicket> open = ticketRepository.findByDeviceIdAndStatusIn(
+                deviceId, List.of("NEW", "ASSIGNED", "IN_PROGRESS"));
+        int n = 0;
+        for (IncidentTicket t : open) {
+            // Chỉ đụng phiếu phần cứng do hệ thống tự tạo, không tự đóng phiếu nghiệp vụ khác.
+            if (!"HARDWARE_FAULT".equalsIgnoreCase(t.getIncidentType())) continue;
+            t.setStatus("RESOLVED");
+            t.setResolvedAt(Instant.now());
+            t.setResolutionNotes(StringUtils.hasText(note) ? note.trim()
+                    : "Hệ thống tự động đóng: thiết bị đã khôi phục kết nối ONLINE.");
+            ticketRepository.save(t);
+            updateRepository.save(new IncidentUpdate(t.getId(), "system_auto_heal", "AUTO_RESOLVE",
+                    StringUtils.hasText(note) ? note.trim() : "Thiết bị đã ONLINE trở lại — tự động đóng phiếu."));
+            log.info("[AUTO RESOLVE] Phiếu {} tự đóng do thiết bị deviceId={} ONLINE trở lại", t.getTicketCode(), deviceId);
+            n++;
+        }
+        return n;
+    }
+
+    /**
+     * Tự động đóng phiếu "AP cổng LANx mất kết nối" khi cổng LAN đó UP trở lại (mô hình AP-theo-cổng:
+     * phiếu gắn deviceId = router GWN, phân biệt từng cổng theo tiêu đề có "LANx").
+     */
+    @Transactional
+    public int resolvePortRecoveredIncidents(Long gwnDeviceId, Long locationId, String port, String note) {
+        List<String> openStatuses = List.of("NEW", "ASSIGNED", "IN_PROGRESS");
+        List<IncidentTicket> candidates = gwnDeviceId != null
+                ? ticketRepository.findByDeviceIdAndStatusIn(gwnDeviceId, openStatuses)
+                : (locationId != null ? ticketRepository.findByLocationIdAndStatusIn(locationId, openStatuses)
+                                      : Collections.emptyList());
+        String marker = "LAN" + port + " "; // khoảng trắng cuối để "LAN4" không khớp "LAN41"
+        int n = 0;
+        for (IncidentTicket t : candidates) {
+            if (!"HARDWARE_FAULT".equalsIgnoreCase(t.getIncidentType())) continue;
+            if (t.getTitle() == null || !t.getTitle().contains(marker)) continue;
+            t.setStatus("RESOLVED");
+            t.setResolvedAt(Instant.now());
+            t.setResolutionNotes(StringUtils.hasText(note) ? note.trim()
+                    : "Hệ thống tự động đóng: cổng LAN" + port + " đã UP trở lại (AP được cắm/khôi phục).");
+            ticketRepository.save(t);
+            updateRepository.save(new IncidentUpdate(t.getId(), "system_gwn_port_monitor", "AUTO_RESOLVE",
+                    "Cổng LAN" + port + " đã UP trở lại — tự động đóng phiếu."));
+            log.info("[AUTO RESOLVE] Phiếu {} tự đóng do cổng LAN{} UP trở lại", t.getTicketCode(), port);
+            n++;
+        }
+        return n;
+    }
+
     @Transactional
     public CitizenReportResponse recordCitizenReport(CreateCitizenReportRequest req, String remoteIp) {
         // 1. Phân giải điểm phát sóng theo locationId hoặc slug

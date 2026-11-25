@@ -70,4 +70,15 @@ class GwnPortIncidentSchedulerTest {
         scheduler.checkGwnPortIncidents(); // vẫn down -> không mở thêm (chống trùng)
         verify(incidents, times(1)).createTicket(any(), any());
     }
+
+    @Test
+    void autoResolvesWhenUnboundPortComesBackUp() {
+        when(gwn.fetchRouterPorts()).thenReturn(ports(false), ports(true));
+
+        scheduler.checkGwnPortIncidents(); // baseline: LAN5 down
+        verify(incidents, never()).resolvePortRecoveredIncidents(any(), any(), any(), any());
+
+        scheduler.checkGwnPortIncidents(); // LAN5 down->up -> tự đóng phiếu cổng LAN5
+        verify(incidents, times(1)).resolvePortRecoveredIncidents(any(), any(), eq("5"), any());
+    }
 }

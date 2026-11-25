@@ -97,6 +97,63 @@ class IncidentTicketServiceTest {
     }
 
     @Test
+    void resolveDeviceRecoveredIncidents_closesOnlyHardwareTicketsForThatDevice() {
+        IncidentTicket hw = new IncidentTicket();
+        hw.setId(301L);
+        hw.setTicketCode("SC-20261125-0301");
+        hw.setDeviceId(50L);
+        hw.setIncidentType("HARDWARE_FAULT");
+        hw.setStatus("NEW");
+
+        IncidentTicket other = new IncidentTicket();
+        other.setId(302L);
+        other.setTicketCode("SC-20261125-0302");
+        other.setDeviceId(50L);
+        other.setIncidentType("SYSTEM_DEGRADATION"); // phiếu nghiệp vụ khác -> KHÔNG tự đóng
+        other.setStatus("NEW");
+
+        when(ticketRepository.findByDeviceIdAndStatusIn(eq(50L), anyList()))
+                .thenReturn(List.of(hw, other));
+        when(ticketRepository.save(any(IncidentTicket.class))).thenAnswer(i -> i.getArgument(0));
+
+        int n = incidentService.resolveDeviceRecoveredIncidents(50L, null);
+
+        assertEquals(1, n);
+        assertEquals("RESOLVED", hw.getStatus());
+        assertNotNull(hw.getResolvedAt());
+        assertEquals("NEW", other.getStatus());
+    }
+
+    @Test
+    void resolvePortRecoveredIncidents_matchesByPortMarkerInTitle() {
+        IncidentTicket lan5 = new IncidentTicket();
+        lan5.setId(401L);
+        lan5.setTicketCode("SC-20261125-0401");
+        lan5.setDeviceId(9L);
+        lan5.setIncidentType("HARDWARE_FAULT");
+        lan5.setStatus("ASSIGNED");
+        lan5.setTitle("AP cổng LAN5 mất kết nối");
+
+        IncidentTicket lan6 = new IncidentTicket();
+        lan6.setId(402L);
+        lan6.setTicketCode("SC-20261125-0402");
+        lan6.setDeviceId(9L);
+        lan6.setIncidentType("HARDWARE_FAULT");
+        lan6.setStatus("NEW");
+        lan6.setTitle("AP cổng LAN6 mất kết nối");
+
+        when(ticketRepository.findByDeviceIdAndStatusIn(eq(9L), anyList()))
+                .thenReturn(List.of(lan5, lan6));
+        when(ticketRepository.save(any(IncidentTicket.class))).thenAnswer(i -> i.getArgument(0));
+
+        int n = incidentService.resolvePortRecoveredIncidents(9L, null, "5", null);
+
+        assertEquals(1, n);
+        assertEquals("RESOLVED", lan5.getStatus());
+        assertEquals("NEW", lan6.getStatus()); // cổng LAN6 không bị đụng
+    }
+
+    @Test
     void testRecordCitizenReport_AutoCreatesIncidentOn3ReportsIn30Mins() {
         WifiLocation loc = new WifiLocation();
         loc.setId(5L);

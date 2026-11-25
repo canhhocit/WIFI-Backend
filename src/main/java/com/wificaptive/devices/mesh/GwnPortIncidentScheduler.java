@@ -69,6 +69,8 @@ public class GwnPortIncidentScheduler {
             Boolean was = prevUp.get(port);
             if (Boolean.TRUE.equals(was) && !up) {
                 openPortIncident(locationId, gwnDeviceId, port);
+            } else if (Boolean.FALSE.equals(was) && up) {
+                closePortIncident(locationId, gwnDeviceId, port);
             }
             prevUp.put(port, up);
         }
@@ -90,6 +92,15 @@ public class GwnPortIncidentScheduler {
             log.warn("[AUTO INCIDENT] AP cổng LAN{} chuyển OFFLINE -> đã mở phiếu sự cố", port);
         } catch (Exception ex) {
             log.warn("[GwnPortIncident] Không mở được phiếu cho cổng LAN{}: {}", port, ex.getMessage());
+        }
+    }
+
+    private void closePortIncident(Long locationId, Long gwnDeviceId, String port) {
+        try {
+            int n = incidentService.resolvePortRecoveredIncidents(gwnDeviceId, locationId, port, null);
+            if (n > 0) log.info("[AUTO RESOLVE] Cổng LAN{} UP trở lại -> tự đóng {} phiếu sự cố", port, n);
+        } catch (Exception ex) {
+            log.warn("[GwnPortIncident] Không đóng được phiếu cho cổng LAN{}: {}", port, ex.getMessage());
         }
     }
 }
