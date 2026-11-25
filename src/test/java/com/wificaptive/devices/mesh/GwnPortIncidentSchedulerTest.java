@@ -44,7 +44,8 @@ class GwnPortIncidentSchedulerTest {
         meshOnLan4.setMacAddress("24:0B:2B:47:2A:22");
         meshOnLan4.setGwnLanPort("4");
 
-        when(repo.findAll()).thenReturn(List.of(router, meshOnLan4));
+        when(repo.findRouters()).thenReturn(List.of(router));
+        when(repo.findAccessPoints()).thenReturn(List.of(meshOnLan4));
         scheduler = new GwnPortIncidentScheduler(gwn, repo, incidents);
     }
 

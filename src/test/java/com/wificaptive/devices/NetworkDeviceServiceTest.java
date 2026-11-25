@@ -204,7 +204,7 @@ class NetworkDeviceServiceTest {
 
         when(gwnCloudGatewayAdapter.fetchDevicesFromCloud()).thenReturn(List.of(routerDto, apDto));
         when(deviceRepository.findByMacAddress(any())).thenReturn(Optional.empty());
-        when(deviceRepository.findAll()).thenReturn(List.of());
+        when(deviceRepository.findByCleanMac(any())).thenReturn(Optional.empty());
         when(deviceRepository.save(any(NetworkDevice.class))).thenAnswer(inv -> inv.getArgument(0));
 
         DeviceSyncSummaryDto summary = deviceService.syncFromGrandstream("admin");
@@ -270,6 +270,38 @@ class NetworkDeviceServiceTest {
 
         NetworkDeviceDto unassigned = deviceService.assignDeviceToLocation(55L, unassignReq, "admin");
         assertThat(unassigned.getLocationId()).isNull();
+    }
+
+    @Test
+    void testGetGwnPortStatusByLocation_whenNoRouterAssigned_returnsEmptyWithoutDefaultFallback() {
+        when(deviceRepository.findByLocationId(2L)).thenReturn(List.of());
+
+        java.util.Map<String, Object> result = deviceService.getGwnPortStatus(2L);
+
+        assertThat(result.get("apiReachable")).isEqualTo(false);
+        assertThat(result.get("routerAssigned")).isEqualTo(false);
+        assertThat((java.util.List<?>) result.get("ports")).isEmpty();
+        verifyNoInteractions(gwnCloudGatewayAdapter);
+    }
+
+    @Test
+    void testGetGwnPortStatusByLocation_whenRouterAssigned_queriesSiteRouterPorts() {
+        oldDevice.setName("Router TDP 1");
+        oldDevice.setGwnNetworkId("2214");
+        java.util.Map<String, Boolean> lan = new java.util.LinkedHashMap<>();
+        lan.put("4", true);
+        lan.put("5", false);
+        when(deviceRepository.findByLocationId(1L)).thenReturn(List.of(oldDevice));
+        when(gwnCloudGatewayAdapter.fetchRouterPorts("001A2B3C4D5E", "2214"))
+                .thenReturn(new com.wificaptive.gateway.dto.GwnRouterPorts(true, lan));
+
+        java.util.Map<String, Object> result = deviceService.getGwnPortStatus(1L);
+
+        assertThat(result.get("apiReachable")).isEqualTo(true);
+        assertThat(result.get("routerAssigned")).isEqualTo(true);
+        assertThat(result.get("gwnName")).isEqualTo("Router TDP 1");
+        assertThat((java.util.List<?>) result.get("ports")).hasSize(2);
+        verify(gwnCloudGatewayAdapter, never()).fetchRouterPorts();
     }
 }
 

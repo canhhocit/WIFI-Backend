@@ -355,10 +355,20 @@ public class NetworkDeviceService {
                 meshByPort.put(d.getGwnLanPort().trim(), d);
             }
         }
-        // Đọc cổng của đúng router điểm này (MAC dạng hex không dấu để khớp device/info); fallback .env.
-        com.wificaptive.gateway.dto.GwnRouterPorts ports = gwnRouter != null
+        // Khi xem theo một địa điểm cụ thể mà điểm đó chưa có Router GWN -> không fallback về router .env của điểm khác.
+        if (locationId != null && (gwnRouter == null || !org.springframework.util.StringUtils.hasText(gwnRouter.getMacAddress()))) {
+            Map<String, Object> out = new java.util.LinkedHashMap<>();
+            out.put("apiReachable", false);
+            out.put("routerAssigned", false);
+            out.put("gwnName", null);
+            out.put("siteName", null);
+            out.put("ports", java.util.List.of());
+            return out;
+        }
+        // Đọc cổng của đúng router điểm này (MAC dạng hex không dấu để khớp device/info); fallback .env chỉ khi không lọc locationId.
+        com.wificaptive.gateway.dto.GwnRouterPorts ports = (gwnRouter != null && org.springframework.util.StringUtils.hasText(gwnRouter.getMacAddress()))
                 ? gwnCloudGatewayAdapter.fetchRouterPorts(
-                        gwnRouter.getMacAddress() != null ? gwnRouter.getMacAddress().replaceAll("[^0-9A-Fa-f]", "") : null,
+                        gwnRouter.getMacAddress().replaceAll("[^0-9A-Fa-f]", ""),
                         gwnRouter.getGwnNetworkId())
                 : gwnCloudGatewayAdapter.fetchRouterPorts();
         // Kỳ vọng = min(4, số cổng LAN thật). Luôn hiện cổng ON + cổng đã gán mesh; bổ sung cổng TRỐNG
@@ -385,6 +395,7 @@ public class NetworkDeviceService {
         list.sort(java.util.Comparator.comparing(m -> (String) m.get("port")));
         Map<String, Object> out = new java.util.LinkedHashMap<>();
         out.put("apiReachable", ports.apiReachable());
+        out.put("routerAssigned", gwnRouter != null);
         out.put("gwnName", gwnRouter != null ? gwnRouter.getName() : null);
         out.put("siteName", gwnRouter != null && gwnRouter.getLocation() != null ? gwnRouter.getLocation().getName() : null);
         out.put("ports", list);
