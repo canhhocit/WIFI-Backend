@@ -11,6 +11,7 @@ public class NetworkDeviceDto {
     private String adminUnitName;
     private String name;
     private String gwnNetworkId;
+    private String gwnLanPort;
     private String deviceType;
     private String serialNumber;
     private String macAddress;
@@ -44,6 +45,7 @@ public class NetworkDeviceDto {
         }
         dto.setName(dev.getName());
         dto.setGwnNetworkId(dev.getGwnNetworkId());
+        dto.setGwnLanPort(dev.getGwnLanPort());
         dto.setDeviceType(dev.getDeviceType());
         dto.setSerialNumber(dev.getSerialNumber());
         dto.setMacAddress(dev.getMacAddress());
@@ -82,6 +84,9 @@ public class NetworkDeviceDto {
 
     public String getGwnNetworkId() { return gwnNetworkId; }
     public void setGwnNetworkId(String gwnNetworkId) { this.gwnNetworkId = gwnNetworkId; }
+
+    public String getGwnLanPort() { return gwnLanPort; }
+    public void setGwnLanPort(String gwnLanPort) { this.gwnLanPort = gwnLanPort; }
 
     public String getDeviceType() { return deviceType; }
     public void setDeviceType(String deviceType) { this.deviceType = deviceType; }

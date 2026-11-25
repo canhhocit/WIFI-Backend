@@ -90,7 +90,9 @@ public class MeshGwnStatusScheduler {
             try {
                 boolean isOnline;
                 String reason;
-                String silk = portByMac.get(normMac(mac));
+                // Ưu tiên cổng khai trên thiết bị (lúc import); env map chỉ là dự phòng/ghi đè cũ.
+                String silk = StringUtils.hasText(d.getGwnLanPort())
+                        ? d.getGwnLanPort().trim() : portByMac.get(normMac(mac));
                 Boolean portUp = (silk != null && ports.apiReachable()) ? ports.isUp(silk) : null;
                 if (portUp != null) {
                     // Chính xác từng mesh: đọc đúng cổng LAN mesh này cắm (hợp cả khi nhiều mesh/1 GWN).

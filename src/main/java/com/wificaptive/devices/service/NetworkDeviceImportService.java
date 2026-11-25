@@ -59,7 +59,7 @@ public class NetworkDeviceImportService {
     private static final Set<String> TYPES = Set.of("ACCESS_POINT", "ROUTER", "SWITCH", "ONT");
     private static final int MAX_ROWS = 20000;
 
-    enum Col { MAC, SERIAL, TYPE, MODEL, VENDOR, IP, LOCATION }
+    enum Col { MAC, SERIAL, TYPE, MODEL, VENDOR, IP, LOCATION, GWN_PORT }
 
     private final NetworkDeviceRepository deviceRepository;
     private final WifiLocationRepository locationRepository;
@@ -154,6 +154,8 @@ public class NetworkDeviceImportService {
             if (model != null) changed |= set(dev.getModel(), model, dev::setModel);
             if (vendor != null) changed |= set(dev.getVendor(), vendor, dev::setVendor);
             if (ip != null) changed |= set(dev.getIpAddress(), ip, dev::setIpAddress);
+            String gwnPort = normalizePort(get(r, cols, Col.GWN_PORT));
+            if (gwnPort != null) changed |= set(dev.getGwnLanPort(), gwnPort, dev::setGwnLanPort);
             if (location != null && !Objects.equals(dev.getLocationId(), location.getId())) {
                 dev.setLocation(location);
                 changed = true;
@@ -196,7 +198,7 @@ public class NetworkDeviceImportService {
             Font bold = wb.createFont();
             bold.setBold(true);
             head.setFont(bold);
-            String[] headers = {"MAC", "Serial (S/N)", "Loai thiet bi", "Model", "Hang", "IP quan tri", "Ma diem"};
+            String[] headers = {"MAC", "Serial (S/N)", "Loai thiet bi", "Model", "Hang", "IP quan tri", "Ma diem", "Cong GWN"};
             Row h = sh.createRow(0);
             for (int c = 0; c < headers.length; c++) {
                 Cell cell = h.createCell(c);
@@ -204,7 +206,7 @@ public class NetworkDeviceImportService {
                 cell.setCellStyle(head);
                 sh.setColumnWidth(c, 18 * 256);
             }
-            String[] sample = {"24:0B:2B:00:00:01", "VTGRB3000001", "ACCESS_POINT", "vAP-32X6V1", "Viettel High Tech", "192.168.80.111", "NVH-0001"};
+            String[] sample = {"24:0B:2B:00:00:01", "VTGRB3000001", "ACCESS_POINT", "vAP-32X6V1", "Viettel High Tech", "192.168.80.111", "NVH-0001", "4"};
             Row s = sh.createRow(1);
             for (int c = 0; c < sample.length; c++) s.createCell(c).setCellValue(sample[c]);
             wb.write(out);
@@ -292,7 +294,9 @@ public class NetworkDeviceImportService {
             else if (h.contains("model")) map.putIfAbsent(Col.MODEL, i);
             else if (h.contains("hang") || h.contains("vendor") || h.contains("nha san xuat")) map.putIfAbsent(Col.VENDOR, i);
             else if (h.contains("ip")) map.putIfAbsent(Col.IP, i);
-            else if (h.contains("ma diem") || h.contains("location") || h.contains("diem")) map.putIfAbsent(Col.LOCATION, i);
+            else if (h.contains("ma diem") || h.contains("location")) map.putIfAbsent(Col.LOCATION, i);
+            else if (h.contains("cong gwn") || h.contains("gwn port") || h.contains("cong lan") || h.contains("port")) map.putIfAbsent(Col.GWN_PORT, i);
+            else if (h.contains("diem")) map.putIfAbsent(Col.LOCATION, i);
         }
         return map.containsKey(Col.MAC) && map.containsKey(Col.SERIAL) ? map : null;
     }
@@ -338,6 +342,13 @@ public class NetworkDeviceImportService {
 
     private static String trimToNull(String s) {
         return StringUtils.hasText(s) ? s.trim() : null;
+    }
+
+    /** Cổng GWN: chấp nhận "4", "LAN4", "Cổng 4"... -> giữ lại chữ số ("4"). Trống -> null. */
+    private static String normalizePort(String s) {
+        if (!StringUtils.hasText(s)) return null;
+        String digits = s.replaceAll("[^0-9]", "");
+        return digits.isEmpty() ? null : digits;
     }
 
     private static boolean set(String oldVal, String newVal, java.util.function.Consumer<String> setter) {

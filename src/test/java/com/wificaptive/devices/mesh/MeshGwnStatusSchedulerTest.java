@@ -67,6 +67,15 @@ class MeshGwnStatusSchedulerTest {
     }
 
     @Test
+    void usesPortFromDeviceRecordWhenSet() {
+        // Cổng khai trên thiết bị (import) được ưu tiên, không cần env map
+        mesh.setGwnLanPort("4");
+        MeshGwnStatusScheduler s = new MeshGwnStatusScheduler(gwn, repo, monitor, "");
+        s.refreshNow();
+        verify(monitor).ingestGwnStatus(eq(mesh), eq(false), any()); // LAN4 down -> OFFLINE
+    }
+
+    @Test
     void unmappedMeshFallsBackToAnyLanUp() {
         // Chưa khai cổng -> giả định 1 mesh/điểm: còn LAN5/6 up nên coi là ONLINE
         MeshGwnStatusScheduler s = new MeshGwnStatusScheduler(gwn, repo, monitor, "");

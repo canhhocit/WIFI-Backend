@@ -25,6 +25,10 @@ public class NetworkDevice {
     @Column(name = "gwn_network_id", length = 50)
     private String gwnNetworkId;
 
+    /** Số cổng LAN trên router GWN mà mesh cắm ("4","5","6") — để đọc đúng linkStatus cổng cho on/off. */
+    @Column(name = "gwn_lan_port", length = 8)
+    private String gwnLanPort;
+
     @Column(name = "serial_number", nullable = false, unique = true, length = 100)
     private String serialNumber;
 
@@ -104,6 +108,9 @@ public class NetworkDevice {
 
     public String getGwnNetworkId() { return gwnNetworkId; }
     public void setGwnNetworkId(String gwnNetworkId) { this.gwnNetworkId = gwnNetworkId; }
+
+    public String getGwnLanPort() { return gwnLanPort; }
+    public void setGwnLanPort(String gwnLanPort) { this.gwnLanPort = gwnLanPort; }
 
     public String getSerialNumber() { return serialNumber; }
     public void setSerialNumber(String serialNumber) { this.serialNumber = serialNumber; }
