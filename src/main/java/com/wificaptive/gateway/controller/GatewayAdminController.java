@@ -1,5 +1,7 @@
 package com.wificaptive.gateway.controller;
 
+import org.springframework.security.access.prepost.PreAuthorize;
+
 import com.wificaptive.audit.entity.AuditAction;
 import com.wificaptive.audit.service.AuditService;
 import com.wificaptive.common.dto.ApiResponse;
@@ -19,6 +21,7 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/admin/gateway")
+@PreAuthorize("@rbac.hasPermission('SETTINGS', 'VIEW')")
 public class GatewayAdminController {
 
     private final GatewayAdapter gatewayAdapter;
@@ -42,6 +45,7 @@ public class GatewayAdminController {
         return ApiResponse.ok(gatewayAdapter.getStatus());
     }
 
+    @PreAuthorize("@rbac.hasPermission('SETTINGS', 'EDIT')")
     @PostMapping("/config")
     public ApiResponse<GatewayStatusDto> updateConfig(
             @Valid @RequestBody MockGatewayConfigDto config,
@@ -61,6 +65,7 @@ public class GatewayAdminController {
         return ApiResponse.ok("Gateway simulation settings updated", updated);
     }
 
+    @PreAuthorize("@rbac.hasPermission('SETTINGS', 'EDIT')")
     @PostMapping("/portal-bypass")
     public ApiResponse<GatewayStatusDto> togglePortalBypass(
             @RequestParam boolean active,

@@ -36,7 +36,7 @@ public class RolePermissionController {
     }
 
     @PutMapping
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN')")
     public ResponseEntity<ApiResponse<RolePermissionDto>> updatePermission(
             @Valid @RequestBody UpdateRolePermissionRequest request,
             @AuthenticationPrincipal UserDetails principal
@@ -47,7 +47,7 @@ public class RolePermissionController {
     }
 
     @PutMapping("/batch")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN')")
     public ResponseEntity<ApiResponse<List<RolePermissionDto>>> updatePermissionsBatch(
             @Valid @RequestBody List<UpdateRolePermissionRequest> requests,
             @AuthenticationPrincipal UserDetails principal

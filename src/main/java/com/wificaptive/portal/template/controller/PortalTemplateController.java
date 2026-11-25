@@ -1,5 +1,7 @@
 package com.wificaptive.portal.template.controller;
 
+import org.springframework.security.access.prepost.PreAuthorize;
+
 import com.wificaptive.common.dto.ApiResponse;
 import com.wificaptive.portal.service.PortalService;
 import com.wificaptive.portal.template.dto.PortalTemplateDto;
@@ -13,6 +15,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/admin/portal-templates")
+@PreAuthorize("@rbac.hasPermission('CAMPAIGNS', 'VIEW')")
 public class PortalTemplateController {
 
     private final PortalTemplateService service;
@@ -38,6 +41,7 @@ public class PortalTemplateController {
         return ApiResponse.ok(service.getDefaultOrActive());
     }
 
+    @PreAuthorize("@rbac.hasPermission('CAMPAIGNS', 'EDIT')")
     @PostMapping
     public ApiResponse<PortalTemplateDto> saveTemplate(@RequestBody PortalTemplateDto dto) {
         PortalTemplateDto saved = service.saveOrUpdate(dto);
@@ -50,6 +54,7 @@ public class PortalTemplateController {
         return ApiResponse.ok(service.getTemplateVersions(id));
     }
 
+    @PreAuthorize("@rbac.hasPermission('CAMPAIGNS', 'EDIT')")
     @PostMapping("/{id}/rollback/{version}")
     public ApiResponse<PortalTemplateDto> rollbackVersion(@PathVariable Long id, @PathVariable Integer version) {
         PortalTemplateDto restored = service.rollbackToVersion(id, version);

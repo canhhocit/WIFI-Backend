@@ -1,5 +1,7 @@
 package com.wificaptive.locations.controller;
 
+import org.springframework.security.access.prepost.PreAuthorize;
+
 import com.wificaptive.common.dto.ApiResponse;
 import com.wificaptive.locations.dto.CreateLocationGroupRequest;
 import com.wificaptive.locations.dto.LocationGroupDto;
@@ -11,6 +13,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping({"/api/v1/admin/location-groups", "/v1/admin/location-groups"})
+@PreAuthorize("@rbac.hasPermission('LOCATIONS', 'VIEW')")
 public class LocationGroupController {
 
     private final LocationGroupService groupService;
@@ -29,22 +32,26 @@ public class LocationGroupController {
         return ApiResponse.ok(groupService.getGroupById(id));
     }
 
+    @PreAuthorize("@rbac.hasPermission('LOCATIONS', 'EDIT')")
     @PostMapping
     public ApiResponse<LocationGroupDto> createGroup(@Valid @RequestBody CreateLocationGroupRequest req) {
         return ApiResponse.ok("Tạo nhóm điểm tùy biến thành công", groupService.createGroup(req));
     }
 
+    @PreAuthorize("@rbac.hasPermission('LOCATIONS', 'EDIT')")
     @PutMapping("/{id}")
     public ApiResponse<LocationGroupDto> updateGroup(@PathVariable Long id, @Valid @RequestBody CreateLocationGroupRequest req) {
         return ApiResponse.ok("Cập nhật nhóm điểm thành công", groupService.updateGroup(id, req));
     }
 
+    @PreAuthorize("@rbac.hasPermission('LOCATIONS', 'DELETE')")
     @DeleteMapping("/{id}")
     public ApiResponse<Void> deleteGroup(@PathVariable Long id) {
         groupService.deleteGroup(id);
         return ApiResponse.ok("Xóa nhóm điểm thành công", null);
     }
 
+    @PreAuthorize("@rbac.hasPermission('LOCATIONS', 'EDIT')")
     @PostMapping("/{id}/assign")
     public ApiResponse<LocationGroupDto> assignLocations(@PathVariable Long id, @RequestBody List<Long> locationIds) {
         return ApiResponse.ok("Gán điểm vào nhóm thành công", groupService.assignLocationsToGroup(id, locationIds));

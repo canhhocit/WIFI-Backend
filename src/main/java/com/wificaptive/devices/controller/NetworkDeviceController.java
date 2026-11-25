@@ -19,6 +19,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/admin/network-devices")
+@PreAuthorize("@rbac.hasPermission('DEVICES', 'VIEW')")
 public class NetworkDeviceController {
 
     private final NetworkDeviceService deviceService;

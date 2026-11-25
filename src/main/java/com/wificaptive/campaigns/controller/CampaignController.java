@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/v1/admin/campaigns")
+@PreAuthorize("@rbac.hasPermission('CAMPAIGNS', 'VIEW')")
 public class CampaignController {
 
     private final CampaignService campaignService;

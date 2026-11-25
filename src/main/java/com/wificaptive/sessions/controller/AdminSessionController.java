@@ -1,5 +1,7 @@
 package com.wificaptive.sessions.controller;
 
+import org.springframework.security.access.prepost.PreAuthorize;
+
 import com.wificaptive.common.dto.ApiResponse;
 import com.wificaptive.common.dto.PageResponse;
 import com.wificaptive.common.security.UserPrincipal;
@@ -16,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/admin/sessions")
+@PreAuthorize("@rbac.hasPermission('LOCATIONS', 'VIEW')")
 public class AdminSessionController {
 
     private final GuestSessionService sessionService;
@@ -45,6 +48,7 @@ public class AdminSessionController {
         return ApiResponse.ok(sessionService.getSessionById(id));
     }
 
+    @PreAuthorize("@rbac.hasPermission('LOCATIONS', 'EDIT')")
     @PostMapping("/sync-cloud")
     public ApiResponse<com.wificaptive.sessions.dto.SessionSyncSummaryDto> syncWithCloud(
             @AuthenticationPrincipal UserPrincipal principal) {
@@ -53,6 +57,7 @@ public class AdminSessionController {
         return ApiResponse.ok(summary.message(), summary);
     }
 
+    @PreAuthorize("@rbac.hasPermission('LOCATIONS', 'EDIT')")
     @PostMapping("/{id}/revoke")
     public ApiResponse<GuestSessionDto> revokeSession(
             @PathVariable Long id,

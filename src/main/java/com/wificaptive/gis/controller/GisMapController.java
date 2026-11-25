@@ -1,5 +1,7 @@
 package com.wificaptive.gis.controller;
 
+import org.springframework.security.access.prepost.PreAuthorize;
+
 import com.wificaptive.common.dto.ApiResponse;
 import com.wificaptive.devices.entity.NetworkDevice;
 import com.wificaptive.devices.repository.NetworkDeviceRepository;
@@ -21,6 +23,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/admin/gis")
+@PreAuthorize("@rbac.hasPermission('LOCATIONS', 'VIEW')")
 public class GisMapController {
 
     private final WifiLocationRepository locationRepository;

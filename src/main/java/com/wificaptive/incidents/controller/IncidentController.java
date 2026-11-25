@@ -12,6 +12,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/admin/incidents")
+@PreAuthorize("@rbac.hasPermission('INCIDENTS', 'VIEW')")
 public class IncidentController {
 
     private final IncidentTicketService ticketService;

@@ -1,5 +1,7 @@
 package com.wificaptive.devices.controller;
 
+import org.springframework.security.access.prepost.PreAuthorize;
+
 import com.wificaptive.common.dto.ApiResponse;
 import com.wificaptive.common.dto.PageResponse;
 import com.wificaptive.common.security.UserPrincipal;
@@ -13,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/admin/devices")
+@PreAuthorize("@rbac.hasPermission('DEVICES', 'VIEW')")
 public class DeviceController {
 
     private final DeviceService deviceService;
@@ -30,6 +33,7 @@ public class DeviceController {
         return ApiResponse.ok(deviceService.getDevices(search, pageable));
     }
 
+    @PreAuthorize("@rbac.hasPermission('DEVICES', 'EDIT')")
     @PatchMapping("/{id}/block")
     public ApiResponse<DeviceDto> toggleBlockDevice(
             @PathVariable Long id,

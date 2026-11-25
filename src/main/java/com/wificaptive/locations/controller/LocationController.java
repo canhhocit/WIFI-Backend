@@ -26,6 +26,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/admin/locations")
+@PreAuthorize("@rbac.hasPermission('LOCATIONS', 'VIEW')")
 public class LocationController {
 
     private final LocationService locationService;

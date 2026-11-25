@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/v1/admin/surveys")
+@PreAuthorize("@rbac.hasPermission('CAMPAIGNS', 'VIEW')")
 public class SurveyAdminController {
 
     private final SurveyService surveyService;

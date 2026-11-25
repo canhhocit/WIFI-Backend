@@ -1,5 +1,7 @@
 package com.wificaptive.audit.controller;
 
+import org.springframework.security.access.prepost.PreAuthorize;
+
 import com.wificaptive.audit.dto.AuditEventDto;
 import com.wificaptive.audit.entity.AuditAction;
 import com.wificaptive.audit.service.AuditService;
@@ -11,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/admin/audit")
+@PreAuthorize("@rbac.hasPermission('SETTINGS', 'VIEW')")
 public class AuditController {
 
     private final AuditService auditService;
