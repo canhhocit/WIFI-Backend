@@ -83,14 +83,14 @@ public class AccessLogRetentionService {
 
     /**
      * Nightly scheduled purge at 03:00 AM UTC for records exceeding 12 months retention window
+     * Uses atomic single bulk SQL delete to avoid JVM Heap Out-Of-Memory and row-by-row DB locking.
      */
     @Scheduled(cron = "0 0 3 * * *")
     public void purgeExpiredRetentionLogs() {
         Instant now = Instant.now();
-        List<AccessLogRetention> expired = retentionRepository.findByRetainedUntilBefore(now);
-        if (!expired.isEmpty()) {
-            retentionRepository.deleteAll(expired);
-            log.info("Purged {} expired access log records older than 12 months legal retention window.", expired.size());
+        int deleted = retentionRepository.deleteByRetainedUntilBefore(now);
+        if (deleted > 0) {
+            log.info("Purged {} expired access log records older than 12 months legal retention window via bulk delete.", deleted);
         }
     }
 }

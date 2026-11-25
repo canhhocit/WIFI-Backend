@@ -31,6 +31,10 @@ public interface AccessLogRetentionRepository extends JpaRepository<AccessLogRet
 
     List<AccessLogRetention> findByRetainedUntilBefore(Instant cutoff);
 
+    @org.springframework.data.jpa.repository.Modifying
+    @Query("DELETE FROM AccessLogRetention l WHERE l.retainedUntil < :cutoff")
+    int deleteByRetainedUntilBefore(@Param("cutoff") Instant cutoff);
+
     long countByLocationId(Long locationId);
 }
 

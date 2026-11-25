@@ -28,6 +28,21 @@ public class AnalyticsService {
     private final GatewayAdapter gatewayAdapter;
     private final NetworkDeviceRepository networkDeviceRepository;
 
+    private volatile CachedOverview cachedOverview;
+    private static final long OVERVIEW_CACHE_TTL_MS = 15000; // 15s cache protects database under concurrent admin dashboard traffic
+
+    private static class CachedOverview {
+        final DashboardOverviewDto dto;
+        final long timestamp;
+        CachedOverview(DashboardOverviewDto dto, long timestamp) {
+            this.dto = dto;
+            this.timestamp = timestamp;
+        }
+        boolean isValid() {
+            return (System.currentTimeMillis() - timestamp) < OVERVIEW_CACHE_TTL_MS;
+        }
+    }
+
     public AnalyticsService(
             GuestSessionRepository sessionRepository,
             WifiLocationRepository locationRepository,
@@ -43,6 +58,11 @@ public class AnalyticsService {
 
     @Transactional(readOnly = true)
     public DashboardOverviewDto getOverview() {
+        CachedOverview currentCache = this.cachedOverview;
+        if (currentCache != null && currentCache.isValid()) {
+            return currentCache.dto;
+        }
+
         Instant now = Instant.now();
         java.time.ZoneId vnZone = java.time.ZoneId.of("Asia/Ho_Chi_Minh");
         Instant startOfToday = java.time.LocalDate.now(vnZone).atStartOfDay(vnZone).toInstant();
@@ -51,13 +71,7 @@ public class AnalyticsService {
         long activeSessions = sessionRepository.countActiveSessions(now);
         long todaySessions = sessionRepository.countSessionsSince(startOfToday);
         long totalLocations = locationRepository.countByDeletedFalse();
-        List<NetworkDevice> netDevs = networkDeviceRepository.findAll();
-        Set<Long> onlineRouterLocationIds = netDevs.stream()
-                .filter(d -> d.getLocationId() != null
-                        && "ROUTER".equalsIgnoreCase(d.getDeviceType())
-                        && "ONLINE".equalsIgnoreCase(d.getStatus()))
-                .map(NetworkDevice::getLocationId)
-                .collect(java.util.stream.Collectors.toSet());
+        Set<Long> onlineRouterLocationIds = networkDeviceRepository.findOnlineRouterLocationIds();
         long activeLocations = locationRepository.findByActiveTrueAndDeletedFalse().stream()
                 .filter(loc -> onlineRouterLocationIds.contains(loc.getId()))
                 .count();
@@ -98,21 +112,20 @@ public class AnalyticsService {
         dto.setSessionsByStatus(statusMap);
         dto.setLocationDistribution(locationDistribution);
 
-        // Topology metrics calculation
-        long routerOnline = netDevs.stream().filter(d -> "ROUTER".equalsIgnoreCase(d.getDeviceType()) && "ONLINE".equalsIgnoreCase(d.getStatus())).count();
-        long routerOffline = netDevs.stream().filter(d -> "ROUTER".equalsIgnoreCase(d.getDeviceType()) && !"ONLINE".equalsIgnoreCase(d.getStatus())).count();
+        // Topology metrics calculation - targeted DB counts instead of findAll() memory scan
+        long routerOnline = networkDeviceRepository.countByDeviceTypeIgnoreCaseAndStatusIgnoreCase("ROUTER", "ONLINE");
+        long routerTotal = networkDeviceRepository.countByDeviceTypeIgnoreCase("ROUTER");
+        long routerOffline = Math.max(0, routerTotal - routerOnline);
 
-        long switchOnline = netDevs.stream().filter(d -> "SWITCH".equalsIgnoreCase(d.getDeviceType()) && "ONLINE".equalsIgnoreCase(d.getStatus())).count();
-        long switchOffline = netDevs.stream().filter(d -> "SWITCH".equalsIgnoreCase(d.getDeviceType()) && !"ONLINE".equalsIgnoreCase(d.getStatus())).count();
+        long switchOnline = networkDeviceRepository.countByDeviceTypeIgnoreCaseAndStatusIgnoreCase("SWITCH", "ONLINE");
+        long switchTotal = networkDeviceRepository.countByDeviceTypeIgnoreCase("SWITCH");
+        long switchOffline = Math.max(0, switchTotal - switchOnline);
 
         // AP theo mô hình "AP theo cổng GWN": kỳ vọng mỗi điểm = min(4, số cổng LAN thật của router).
         // AP Online = tổng cổng LAN ON (active_ap_count); Offline = kỳ vọng - online. Nhất quán với panel theo cổng.
         // Không phụ thuộc AP có đăng ký trong DB hay không (zero-touch).
         final int targetApPerSite = 4;
-        java.util.Set<Long> routerLocationIds = netDevs.stream()
-                .filter(d -> "ROUTER".equalsIgnoreCase(d.getDeviceType()) && d.getLocationId() != null)
-                .map(com.wificaptive.devices.entity.NetworkDevice::getLocationId)
-                .collect(java.util.stream.Collectors.toSet());
+        java.util.Set<Long> routerLocationIds = networkDeviceRepository.findRouterLocationIds();
         java.util.Map<Long, Integer> apOnByLoc = new java.util.HashMap<>();
         java.util.Map<Long, Integer> apTotalByLoc = new java.util.HashMap<>();
         for (com.wificaptive.locations.entity.WifiLocation loc : locationRepository.findByActiveTrueAndDeletedFalse()) {
@@ -157,6 +170,7 @@ public class AnalyticsService {
         topology.setApUnmonitored(apUnmonitored);
         dto.setTopology(topology);
 
+        this.cachedOverview = new CachedOverview(dto, System.currentTimeMillis());
         return dto;
     }
 

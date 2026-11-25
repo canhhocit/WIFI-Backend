@@ -39,6 +39,9 @@ public class LocationService {
     @Autowired(required = false)
     private com.wificaptive.devices.repository.NetworkDeviceRepository networkDeviceRepository;
 
+    @Autowired(required = false)
+    private com.wificaptive.portal.service.PortalService portalService;
+
     public LocationService(WifiLocationRepository locationRepository,
             AdministrativeUnitRepository adminUnitRepository,
             AuditService auditService) {
@@ -81,9 +84,11 @@ public class LocationService {
             }
         }
 
+        List<Long> pageLocationIds = page.getContent().stream().map(WifiLocation::getId).toList();
+
         Map<Long, Long> activeMap = new HashMap<>();
-        if (sessionRepository != null) {
-            List<Object[]> groups = sessionRepository.countActiveSessionsGroupByLocation(Instant.now());
+        if (sessionRepository != null && !pageLocationIds.isEmpty()) {
+            List<Object[]> groups = sessionRepository.countActiveSessionsByLocationIds(pageLocationIds, Instant.now());
             for (Object[] g : groups) {
                 if (g[0] != null && g[1] != null) {
                     activeMap.put(((Number) g[0]).longValue(), ((Number) g[1]).longValue());
@@ -92,8 +97,8 @@ public class LocationService {
         }
 
         Map<Long, List<com.wificaptive.devices.entity.NetworkDevice>> devicesByLocation = new HashMap<>();
-        if (networkDeviceRepository != null) {
-            for (com.wificaptive.devices.entity.NetworkDevice d : networkDeviceRepository.findAll()) {
+        if (networkDeviceRepository != null && !pageLocationIds.isEmpty()) {
+            for (com.wificaptive.devices.entity.NetworkDevice d : networkDeviceRepository.findByLocationIdIn(pageLocationIds)) {
                 if (d.getLocationId() != null) {
                     devicesByLocation.computeIfAbsent(d.getLocationId(), k -> new java.util.ArrayList<>()).add(d);
                 }
@@ -245,6 +250,10 @@ public class LocationService {
                 saved.getId().toString(),
                 "Created new Wi-Fi location: " + saved.getName() + " (" + saved.getSlug() + ")");
 
+        if (portalService != null) {
+            portalService.invalidatePortalCache();
+        }
+
         return LocationDto.from(saved);
     }
 
@@ -316,6 +325,10 @@ public class LocationService {
                 updated.getId().toString(),
                 "Updated Wi-Fi location settings for: " + updated.getName());
 
+        if (portalService != null) {
+            portalService.invalidatePortalCache();
+        }
+
         return LocationDto.from(updated);
     }
 
@@ -348,6 +361,10 @@ public class LocationService {
                 "LOCATION",
                 id.toString(),
                 "Deleted Wi-Fi location: " + location.getName() + " (original slug: " + oldSlug + ")");
+
+        if (portalService != null) {
+            portalService.invalidatePortalCache();
+        }
     }
 
     private void validateGeoFence(Double lat, Double lng) {

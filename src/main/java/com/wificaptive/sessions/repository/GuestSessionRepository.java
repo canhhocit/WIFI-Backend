@@ -75,6 +75,9 @@ public interface GuestSessionRepository extends JpaRepository<GuestSession, Long
     @Query("SELECT s.location.id, COUNT(s) FROM GuestSession s WHERE s.status = 'AUTHORIZED' AND s.expiresAt > :now GROUP BY s.location.id")
     List<Object[]> countActiveSessionsGroupByLocation(@Param("now") Instant now);
 
+    @Query("SELECT s.location.id, COUNT(s) FROM GuestSession s WHERE s.location.id IN :locationIds AND s.status = 'AUTHORIZED' AND s.expiresAt > :now GROUP BY s.location.id")
+    List<Object[]> countActiveSessionsByLocationIds(@Param("locationIds") java.util.Collection<Long> locationIds, @Param("now") Instant now);
+
     @Query("SELECT COUNT(s) FROM GuestSession s WHERE s.status = 'AUTHORIZED' AND s.expiresAt > :now")
     long countActiveSessions(@Param("now") Instant now);
 
