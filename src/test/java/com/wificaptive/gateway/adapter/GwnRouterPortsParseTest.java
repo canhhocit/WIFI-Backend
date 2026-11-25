@@ -26,8 +26,9 @@ class GwnRouterPortsParseTest {
 
         assertTrue(ports.apiReachable());
         assertTrue(ports.hasLanInfo());
-        // chỉ các cổng LAN (role=0): 2,4,5,6 — bỏ WAN (role=1) silk 1 & 3
+        // chỉ cổng LAN RJ45 (role=0, type=0): 4,5,6 — bỏ WAN (role=1) silk 1 & 3, và bỏ cổng SFP (type=1) silk 2
         assertNull(ports.isUp("1"));
+        assertNull(ports.isUp("2")); // LAN2 là cổng SFP quang -> không tính là cổng AP
         assertNull(ports.isUp("3"));
         assertEquals(Boolean.FALSE, ports.isUp("4")); // mesh .111 rút khỏi LAN4
         assertEquals(Boolean.TRUE, ports.isUp("5"));  // mesh khác cắm LAN5

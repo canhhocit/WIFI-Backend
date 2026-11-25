@@ -718,12 +718,16 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
         return com.wificaptive.gateway.dto.GwnRouterPorts.unreachable();
     }
 
-    /** Lọc portInfo của device/info -> link up/down các cổng LAN (role=0), key theo số in trên vỏ cổng. */
+    /** Lọc portInfo -> link up/down các cổng LAN RJ45 (role=0, KHÔNG phải SFP quang), key theo số in trên vỏ cổng. */
     static com.wificaptive.gateway.dto.GwnRouterPorts parseRouterPorts(JsonNode portInfo) {
         Map<String, Boolean> lan = new java.util.LinkedHashMap<>();
         if (portInfo != null && portInfo.isArray()) {
             for (JsonNode p : portInfo) {
                 if (!"0".equals(p.path("role").asText(""))) continue; // chỉ cổng LAN (role=0), bỏ WAN (role=1)
+                // Bỏ cổng quang SFP: không cắm AP qua dây mạng (RJ45) -> type="1" hoặc portDesc="SFP".
+                String type = p.path("type").asText("");
+                String portDesc = p.path("portDesc").asText("");
+                if ("1".equals(type) || "SFP".equalsIgnoreCase(portDesc)) continue;
                 String silk = StringUtils.hasText(p.path("silkScreenPort").asText())
                         ? p.path("silkScreenPort").asText() : p.path("silkNum").asText("");
                 if (!StringUtils.hasText(silk)) continue;
