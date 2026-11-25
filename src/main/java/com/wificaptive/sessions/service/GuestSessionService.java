@@ -62,8 +62,8 @@ public class GuestSessionService {
             com.wificaptive.network.service.AccessLogRetentionService accessLogRetentionService,
             @Autowired(required = false) GwnCloudGatewayAdapter gwnCloudGatewayAdapter,
             @Autowired(required = false) MeshApMonitorService meshApMonitorService,
-            @Value("${app.gateway.gwn-cloud.client-idle-timeout-minutes:15}") int clientIdleTimeoutMinutes,
-            @Value("${app.gateway.gwn-cloud.new-session-grace-minutes:3}") int newSessionGraceMinutes) {
+            @Value("${app.gateway.gwn-cloud.client-idle-timeout-minutes:30}") int clientIdleTimeoutMinutes,
+            @Value("${app.gateway.gwn-cloud.new-session-grace-minutes:15}") int newSessionGraceMinutes) {
         this.sessionRepository = sessionRepository;
         this.gatewayAdapter = gatewayAdapter;
         this.auditService = auditService;
@@ -187,6 +187,10 @@ public class GuestSessionService {
                         session.getGatewayReference()
                 );
                 session.setStatus(SessionStatus.EXPIRED);
+                session.setRevokedAt(now);
+                if (!StringUtils.hasText(session.getRevokeReason())) {
+                    session.setRevokeReason("Hết thời gian sử dụng (TTL)");
+                }
                 toUpdate.add(session);
 
                 if (accessLogRetentionService != null) {
@@ -247,6 +251,7 @@ public class GuestSessionService {
     public SessionSyncSummaryDto syncActiveSessionsWithCloud(String actorUsername) {
         Instant now = Instant.now();
         List<GuestSession> activeSessions = sessionRepository.findByStatusWithLocation(SessionStatus.AUTHORIZED);
+        List<GuestSession> recentExpired = sessionRepository.findUnexpiredByStatusWithLocation(SessionStatus.EXPIRED, now);
 
         if (gwnCloudGatewayAdapter == null || !gwnCloudGatewayAdapter.isLiveCredentialsConfigured()) {
             return new SessionSyncSummaryDto(
@@ -261,7 +266,7 @@ public class GuestSessionService {
             );
         }
 
-        if (activeSessions.isEmpty()) {
+        if (activeSessions.isEmpty() && (recentExpired == null || recentExpired.isEmpty())) {
             return new SessionSyncSummaryDto(
                     0, 0, 0, 0, 0, true, now,
                     "Hiện không có phiên nào đang kết nối cần đối chiếu với GWN Cloud."
@@ -279,23 +284,31 @@ public class GuestSessionService {
         int updatedTrafficCount = 0;
         int expiredCount = 0;
         int skippedCount = 0;
+        int restoredCount = 0;
         List<GuestSession> modified = new java.util.ArrayList<>();
+        Set<String> activeCleanMacs = new java.util.HashSet<>();
 
         for (GuestSession session : activeSessions) {
             Instant startedAt = session.getAuthorizedAt() != null ? session.getAuthorizedAt() : session.getCreatedAt();
             boolean pastGrace = startedAt == null || startedAt.isBefore(now.minus(gracePeriod));
-            String normalizedMac = session.getMacAddress() != null
-                    ? session.getMacAddress().replaceAll("[^A-Fa-f0-9]", "").toUpperCase(Locale.ROOT)
-                    : "";
+            String normalizedMac = normalizeCleanMac(session.getMacAddress());
             boolean presentOnMesh = !normalizedMac.isEmpty() && meshLiveMacs.contains(normalizedMac);
 
             // 1. Nếu đã quá hạn TTL -> đánh dấu hết hạn ngay
             if (session.getExpiresAt() != null && !session.getExpiresAt().isAfter(now)) {
                 session.setStatus(SessionStatus.EXPIRED);
+                session.setRevokedAt(now);
+                if (!StringUtils.hasText(session.getRevokeReason())) {
+                    session.setRevokeReason("Hết thời gian sử dụng (TTL)");
+                }
                 modified.add(session);
                 recordCompletionSafely(session, now, "EXPIRED");
                 expiredCount++;
                 continue;
+            }
+
+            if (!normalizedMac.isEmpty()) {
+                activeCleanMacs.add(normalizedMac);
             }
 
             // 2. Truy vấn GWN Cloud /oapi/v1.0.0/client/info (theo networkId của Router gắn điểm nếu có)
@@ -314,9 +327,12 @@ public class GuestSessionService {
                     onlineCount++;
                 } else {
                     session.setStatus(SessionStatus.EXPIRED);
+                    session.setRevokedAt(now);
+                    session.setRevokeReason("Thiết bị đã rời mạng Wi-Fi");
                     modified.add(session);
                     recordCompletionSafely(session, now, "CLOUD_CLIENT_NOT_FOUND");
                     expiredCount++;
+                    activeCleanMacs.remove(normalizedMac);
                     log.info("[Session Cloud Sync] Đóng phiên #{} (MAC: {}) vì không tồn tại trên GWN Cloud (40001)",
                             session.getId(), session.getMacAddress());
                 }
@@ -324,33 +340,31 @@ public class GuestSessionService {
             }
 
             // 3. Client có trên GWN Cloud -> đồng bộ lưu lượng thực tế & tên thiết bị
-            boolean dirty = false;
-            if (live.rxBytes() > 0 && !Long.valueOf(live.rxBytes()).equals(session.getBytesDownloaded())) {
-                session.setBytesDownloaded(live.rxBytes());
-                dirty = true;
-            }
-            if (live.txBytes() > 0 && !Long.valueOf(live.txBytes()).equals(session.getBytesUploaded())) {
-                session.setBytesUploaded(live.txBytes());
-                dirty = true;
-            }
-            if (StringUtils.hasText(live.hostname())
-                    && (!StringUtils.hasText(session.getGuestName()) || "Guest User".equalsIgnoreCase(session.getGuestName().trim()))) {
-                session.setGuestName(live.hostname().trim());
-                dirty = true;
-            }
+            long prevTotalBytes = safeBytes(session.getBytesDownloaded()) + safeBytes(session.getBytesUploaded());
+            boolean dirty = applyCloudClientMetrics(session, live);
+            long newTotalBytes = safeBytes(session.getBytesDownloaded()) + safeBytes(session.getBytesUploaded());
+            boolean trafficGrew = prevTotalBytes > 0 && newTotalBytes > prevTotalBytes;
             if (dirty) {
                 updatedTrafficCount++;
             }
 
-            // 4. Kiểm tra thiết bị còn hoạt động trong ngưỡng idle hay đã rời khỏi mạng
-            boolean activeOnCloud = live.isActiveWithin(now, idleThreshold);
+            // 4. Đánh giá thiết bị còn đang hoạt động thực tế hay đã rời mạng:
+            // - GWN7002 với client sau Mesh/LAN (wired=1) đôi khi giữ nguyên lastactiveTime cũ trước thời điểm đăng nhập.
+            //   Nếu lastActiveAt cũ hơn authorizedAt - 2 phút -> coi đó là dấu thời gian trước phiên, dựa vào baseline phiên & lưu lượng tăng.
+            // - Nếu lưu lượng rx+tx vừa tăng thêm so với lần sync trước -> chắc chắn khách đang dùng mạng.
+            boolean activeOnCloud = isClientActivelyUsingNetwork(live, session, startedAt, now, idleThreshold, trafficGrew);
             if (!activeOnCloud && !presentOnMesh && pastGrace) {
                 session.setStatus(SessionStatus.EXPIRED);
+                session.setRevokedAt(now);
+                session.setRevokeReason(live.portalEnable()
+                        ? "Không phát sinh lưu lượng (Quá giờ chờ)"
+                        : "Thiết bị đã hết phiên trên Gateway");
                 dirty = true;
                 recordCompletionSafely(session, now, "CLOUD_IDLE_DISCONNECTED");
                 expiredCount++;
-                log.info("[Session Cloud Sync] Đóng phiên #{} (MAC: {}) do đã ngừng hoạt động trên GWN Cloud (lastActive={})",
-                        session.getId(), session.getMacAddress(), live.lastActiveAt());
+                activeCleanMacs.remove(normalizedMac);
+                log.info("[Session Cloud Sync] Đóng phiên #{} (MAC: {}) do đã ngừng hoạt động trên GWN Cloud (lastActive={}, portalEnable={})",
+                        session.getId(), session.getMacAddress(), live.lastActiveAt(), live.portalEnable());
             } else {
                 onlineCount++;
             }
@@ -360,26 +374,81 @@ public class GuestSessionService {
             }
         }
 
+        // 5. Tự động đối soát & khôi phục các phiên chưa hết hạn (expiresAt > now) bị đóng nhầm trước đó
+        // nếu GWN Cloud xác nhận thiết bị vẫn đang Đã xác thực (portalEnable=1) và còn lưu lượng / hoạt động gần đây.
+        if (recentExpired != null && !recentExpired.isEmpty()) {
+            Set<String> seenExpiredMacs = new java.util.HashSet<>();
+            for (GuestSession expiredCandidate : recentExpired) {
+                String cleanMac = normalizeCleanMac(expiredCandidate.getMacAddress());
+                if (cleanMac.isEmpty() || !seenExpiredMacs.add(cleanMac)) {
+                    continue; // Chỉ xét phiên mới nhất của mỗi MAC
+                }
+                if (activeCleanMacs.contains(cleanMac)) {
+                    continue; // MAC này đã có phiên AUTHORIZED mới hơn
+                }
+                if (isExplicitTerminationReason(expiredCandidate.getRevokeReason())) {
+                    continue; // Không khôi phục phiên đã bị thay thế, tự ngắt hoặc hết TTL
+                }
+
+                Instant startedAt = expiredCandidate.getAuthorizedAt() != null
+                        ? expiredCandidate.getAuthorizedAt()
+                        : expiredCandidate.getCreatedAt();
+                String routerNetworkId = resolveLocationRouterNetworkId(expiredCandidate);
+                GwnClientLiveStatus live = StringUtils.hasText(routerNetworkId)
+                        ? gwnCloudGatewayAdapter.fetchClientInfoFromCloud(expiredCandidate.getMacAddress(), routerNetworkId)
+                        : gwnCloudGatewayAdapter.fetchClientInfoFromCloud(expiredCandidate.getMacAddress());
+
+                if (!live.apiReachable() || !live.exists() || !live.portalEnable()) {
+                    continue;
+                }
+
+                long prevTotalBytes = safeBytes(expiredCandidate.getBytesDownloaded()) + safeBytes(expiredCandidate.getBytesUploaded());
+                long liveTotalBytes = safeBytes(live.rxBytes()) + safeBytes(live.txBytes());
+                boolean trafficGrew = liveTotalBytes > prevTotalBytes;
+                boolean presentOnMesh = meshLiveMacs.contains(cleanMac);
+                boolean activeNow = live.isActiveWithin(now, idleThreshold)
+                        || trafficGrew
+                        || presentOnMesh
+                        || isPreSessionStaleActivity(live.lastActiveAt(), startedAt, now, idleThreshold, expiredCandidate.getUpdatedAt());
+
+                if (activeNow) {
+                    applyCloudClientMetrics(expiredCandidate, live);
+                    expiredCandidate.setStatus(SessionStatus.AUTHORIZED);
+                    expiredCandidate.setRevokedAt(null);
+                    expiredCandidate.setRevokeReason(null);
+                    modified.add(expiredCandidate);
+                    activeCleanMacs.add(cleanMac);
+                    onlineCount++;
+                    restoredCount++;
+                    updatedTrafficCount++;
+                    log.info("[Session Cloud Sync] Khôi phục phiên #{} (MAC: {}, tên: {}) về AUTHORIZED vì GWN Cloud xác nhận vẫn đang hoạt động (lastActive={}, rx={}, tx={})",
+                            expiredCandidate.getId(), expiredCandidate.getMacAddress(), live.hostname(),
+                            live.lastActiveAt(), live.rxBytes(), live.txBytes());
+                }
+            }
+        }
+
         if (!modified.isEmpty()) {
             sessionRepository.saveAll(modified);
         }
 
-        if (expiredCount > 0) {
+        if (expiredCount > 0 || restoredCount > 0) {
             auditService.recordEvent(
                     AuditAction.SESSION_EXPIRE,
                     actorUsername != null ? actorUsername : "system-cloud-sync",
                     "internal",
                     "SESSION",
                     "CLOUD_SYNC",
-                    String.format("Đồng bộ GWN Cloud: kiểm tra %d phiên, %d đang online, cập nhật lưu lượng %d, đóng %d phiên đã rời mạng/không tồn tại",
-                            activeSessions.size(), onlineCount, updatedTrafficCount, expiredCount)
+                    String.format("Đồng bộ GWN Cloud: kiểm tra %d phiên, %d đang online (khôi phục %d phiên còn hoạt động), cập nhật lưu lượng %d, đóng %d phiên đã rời mạng/không tồn tại",
+                            activeSessions.size(), onlineCount, restoredCount, updatedTrafficCount, expiredCount)
             );
         }
 
-        String summaryMsg = String.format(
-                "Đã đồng bộ GWN Cloud: %d phiên đang online thật, cập nhật lưu lượng %d phiên, đóng %d phiên đã rời mạng/không tồn tại.",
-                onlineCount, updatedTrafficCount, expiredCount
-        );
+        String summaryMsg = restoredCount > 0
+                ? String.format("Đã đồng bộ GWN Cloud: %d phiên đang online thật (đã khôi phục %d phiên còn hoạt động), cập nhật lưu lượng %d phiên, đóng %d phiên đã rời mạng.",
+                        onlineCount, restoredCount, updatedTrafficCount, expiredCount)
+                : String.format("Đã đồng bộ GWN Cloud: %d phiên đang online thật, cập nhật lưu lượng %d phiên, đóng %d phiên đã rời mạng/không tồn tại.",
+                        onlineCount, updatedTrafficCount, expiredCount);
         return new SessionSyncSummaryDto(
                 activeSessions.size(),
                 onlineCount,
@@ -390,6 +459,76 @@ public class GuestSessionService {
                 now,
                 summaryMsg
         );
+    }
+
+    private String normalizeCleanMac(String mac) {
+        return mac != null ? mac.replaceAll("[^A-Fa-f0-9]", "").toUpperCase(Locale.ROOT) : "";
+    }
+
+    private long safeBytes(Long val) {
+        return val != null ? Math.max(0L, val) : 0L;
+    }
+
+    private boolean isExplicitTerminationReason(String reason) {
+        if (!StringUtils.hasText(reason)) return false;
+        return reason.contains("thay thế")
+                || reason.contains("ngắt")
+                || reason.contains("disconnect")
+                || reason.contains("TTL")
+                || reason.contains("chặn");
+    }
+
+    private boolean applyCloudClientMetrics(GuestSession session, GwnClientLiveStatus live) {
+        boolean dirty = false;
+        if (live.rxBytes() > 0 && !Long.valueOf(live.rxBytes()).equals(session.getBytesDownloaded())) {
+            session.setBytesDownloaded(live.rxBytes());
+            dirty = true;
+        }
+        if (live.txBytes() > 0 && !Long.valueOf(live.txBytes()).equals(session.getBytesUploaded())) {
+            session.setBytesUploaded(live.txBytes());
+            dirty = true;
+        }
+        if (StringUtils.hasText(live.hostname())
+                && (!StringUtils.hasText(session.getGuestName()) || "Guest User".equalsIgnoreCase(session.getGuestName().trim()))) {
+            session.setGuestName(live.hostname().trim());
+            dirty = true;
+        }
+        return dirty;
+    }
+
+    private boolean isPreSessionStaleActivity(
+            Instant lastActiveAt,
+            Instant startedAt,
+            Instant now,
+            Duration idleThreshold,
+            Instant sessionUpdatedAt
+    ) {
+        if (startedAt == null || lastActiveAt == null) return false;
+        // GWN7002 đôi khi giữ nguyên lastactiveTime cũ từ trước khi phiên Captive Portal bắt đầu
+        if (lastActiveAt.isBefore(startedAt.minusSeconds(120))) {
+            Instant baseline = (sessionUpdatedAt != null && sessionUpdatedAt.isAfter(startedAt))
+                    ? sessionUpdatedAt
+                    : startedAt;
+            return baseline.isAfter(now.minus(idleThreshold));
+        }
+        return false;
+    }
+
+    private boolean isClientActivelyUsingNetwork(
+            GwnClientLiveStatus live,
+            GuestSession session,
+            Instant startedAt,
+            Instant now,
+            Duration idleThreshold,
+            boolean trafficGrew
+    ) {
+        if (trafficGrew) {
+            return true;
+        }
+        if (isPreSessionStaleActivity(live.lastActiveAt(), startedAt, now, idleThreshold, session.getUpdatedAt())) {
+            return true;
+        }
+        return live.isActiveWithin(now, idleThreshold);
     }
 
     /**

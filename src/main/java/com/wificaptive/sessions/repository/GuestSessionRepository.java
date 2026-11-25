@@ -34,6 +34,9 @@ public interface GuestSessionRepository extends JpaRepository<GuestSession, Long
     @Query("SELECT s FROM GuestSession s LEFT JOIN FETCH s.location l WHERE s.status = :status")
     List<GuestSession> findByStatusWithLocation(@Param("status") SessionStatus status);
 
+    @Query("SELECT s FROM GuestSession s LEFT JOIN FETCH s.location l WHERE s.status = :status AND s.expiresAt > :now AND s.revokedBy IS NULL ORDER BY s.createdAt DESC")
+    List<GuestSession> findUnexpiredByStatusWithLocation(@Param("status") SessionStatus status, @Param("now") Instant now);
+
     @Query(value = "SELECT s FROM GuestSession s LEFT JOIN FETCH s.location l WHERE " +
            "(:locationId IS NULL OR s.location.id = :locationId) AND " +
            "(:status IS NULL OR s.status = :status) AND " +

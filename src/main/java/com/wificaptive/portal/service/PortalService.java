@@ -363,27 +363,30 @@ public class PortalService {
             throw new BadRequestException("Thiết bị có địa chỉ MAC " + macAddress + " nằm trong danh sách cấm truy cập (Blacklist) của cơ quan an ninh mạng.");
         }
 
+        Instant now = Instant.now();
+
         // Close any prior active sessions for this device first (renewal / re-authentication)
-        List<GuestSession> existingActive = sessionRepository.findActiveSessionsByMac(macAddress, Instant.now());
+        List<GuestSession> existingActive = sessionRepository.findActiveSessionsByMac(macAddress, now);
         if (!existingActive.isEmpty()) {
             for (GuestSession prior : existingActive) {
                 log.info("Closing previous session {} for MAC {} due to re-authentication", prior.getId(), macAddress);
                 revokeGatewayForLocation(prior.getId(), macAddress, clientIp, prior.getGatewayReference(), prior.getLocation());
                 prior.setStatus(SessionStatus.EXPIRED);
+                prior.setRevokedAt(now);
+                prior.setRevokeReason("Đăng nhập phiên mới thay thế");
             }
             sessionRepository.saveAll(existingActive);
         }
 
         // Check concurrent users limit for location (excluding other sessions of this device)
         int maxUsers = location.getMaxConcurrentUsers() != null ? location.getMaxConcurrentUsers() : 50;
-        long otherActive = sessionRepository.countActiveSessionsByLocationExcludingMac(location.getId(), macAddress, Instant.now());
+        long otherActive = sessionRepository.countActiveSessionsByLocationExcludingMac(location.getId(), macAddress, now);
         if (otherActive >= maxUsers) {
             throw new BadRequestException("Điểm phát sóng tại " + location.getName() + " hiện đã đạt giới hạn tối đa (" +
                     otherActive + "/" + maxUsers + " người kết nối). Vui lòng thử lại sau khi có người rời đi để đảm bảo chất lượng mạng.");
         }
 
         // 1. Prepare session in memory
-        Instant now = Instant.now();
         String sessionToken = "sess_" + UUID.randomUUID().toString().replace("-", "");
 
         GuestSession session = new GuestSession();
@@ -470,6 +473,8 @@ public class PortalService {
             log.info("Session {} token {} reached TTL, marking as EXPIRED", session.getId(), token);
             gatewayAdapter.revokeSession(session.getId(), session.getMacAddress(), session.getIpAddress(), session.getGatewayReference());
             session.setStatus(SessionStatus.EXPIRED);
+            session.setRevokedAt(now);
+            session.setRevokeReason("Hết thời gian sử dụng (TTL)");
             sessionRepository.save(session);
         }
 

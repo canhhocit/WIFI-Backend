@@ -198,6 +198,89 @@ class GuestSessionServiceTest {
     }
 
     @Test
+    void testSyncActiveSessionsWithCloud_KeepsPreSessionStaleAndTrafficGrowingClientsAndRestoresPrematureExpired() {
+        var cloudAdapter = mock(com.wificaptive.gateway.adapter.GwnCloudGatewayAdapter.class);
+        var meshMonitor = mock(com.wificaptive.devices.mesh.MeshApMonitorService.class);
+
+        GuestSessionService cloudSyncService = new GuestSessionService(
+                sessionRepository, gatewayAdapter, auditService, accessLogRetentionService,
+                cloudAdapter, meshMonitor, 30, 15);
+
+        Instant now = Instant.now();
+
+        // 1. Desktop vừa đăng nhập 5 phút trước, GWN giữ lastactiveTime cũ từ 4 tiếng trước (pre-session) -> phải GIỮ AUTHORIZED
+        GuestSession desktopSession = new GuestSession();
+        desktopSession.setId(93L);
+        desktopSession.setMacAddress("a0-51-0b-30-8c-98");
+        desktopSession.setGuestName("Guest User");
+        desktopSession.setStatus(SessionStatus.AUTHORIZED);
+        desktopSession.setAuthorizedAt(now.minusSeconds(300));
+        desktopSession.setExpiresAt(now.plusSeconds(6900));
+
+        // 2. Phiên có lưu lượng tăng thêm giữa 2 lần sync dù lastactiveTime cũ -> phải GIỮ AUTHORIZED
+        GuestSession growingTrafficSession = new GuestSession();
+        growingTrafficSession.setId(94L);
+        growingTrafficSession.setMacAddress("11-22-33-44-55-66");
+        growingTrafficSession.setStatus(SessionStatus.AUTHORIZED);
+        growingTrafficSession.setAuthorizedAt(now.minusSeconds(3600));
+        growingTrafficSession.setUpdatedAt(now.minusSeconds(1200));
+        growingTrafficSession.setExpiresAt(now.plusSeconds(3600));
+        growingTrafficSession.setBytesDownloaded(1_000_000L);
+        growingTrafficSession.setBytesUploaded(500_000L);
+
+        // 3. Phiên chưa hết TTL bị đóng nhầm trước đó (revokedBy=null) nhưng GWN Cloud xác nhận còn online -> phải KHÔI PHỤC AUTHORIZED
+        GuestSession prematurelyExpired = new GuestSession();
+        prematurelyExpired.setId(90L);
+        prematurelyExpired.setMacAddress("1e-ac-d1-82-1c-15");
+        prematurelyExpired.setStatus(SessionStatus.EXPIRED);
+        prematurelyExpired.setAuthorizedAt(now.minusSeconds(2400));
+        prematurelyExpired.setExpiresAt(now.plusSeconds(3000));
+        prematurelyExpired.setBytesDownloaded(24_000_000L);
+        prematurelyExpired.setBytesUploaded(19_000_000L);
+
+        // 4. Phiên cũ đã bị thay thế ("Đăng nhập phiên mới thay thế") -> KHÔNG được khôi phục
+        GuestSession replacedOld = new GuestSession();
+        replacedOld.setId(91L);
+        replacedOld.setMacAddress("96-82-f7-53-ed-8d");
+        replacedOld.setStatus(SessionStatus.EXPIRED);
+        replacedOld.setAuthorizedAt(now.minusSeconds(3000));
+        replacedOld.setExpiresAt(now.plusSeconds(2400));
+        replacedOld.setRevokeReason("Đăng nhập phiên mới thay thế");
+
+        when(sessionRepository.findByStatusWithLocation(SessionStatus.AUTHORIZED))
+                .thenReturn(List.of(desktopSession, growingTrafficSession));
+        when(sessionRepository.findUnexpiredByStatusWithLocation(eq(SessionStatus.EXPIRED), any(Instant.class)))
+                .thenReturn(List.of(prematurelyExpired, replacedOld));
+        when(cloudAdapter.isLiveCredentialsConfigured()).thenReturn(true);
+        when(meshMonitor.getLiveConnectedClientMacs()).thenReturn(java.util.Set.of());
+
+        when(cloudAdapter.fetchClientInfoFromCloud("a0-51-0b-30-8c-98"))
+                .thenReturn(new com.wificaptive.gateway.dto.GwnClientLiveStatus(
+                        true, true, false, "A0:51:0B:30:8C:98", "DESKTOP-GNQ6SIQ", "192.168.80.137",
+                        "Windows", 99464038L, 133353740L, "EC:74:D7:98:B0:42", now.minusSeconds(14400), true, true));
+        when(cloudAdapter.fetchClientInfoFromCloud("11-22-33-44-55-66"))
+                .thenReturn(new com.wificaptive.gateway.dto.GwnClientLiveStatus(
+                        true, true, false, "11:22:33:44:55:66", "Phone", "192.168.80.199",
+                        "Android", 2_500_000L, 900_000L, "EC:74:D7:98:B0:42", now.minusSeconds(2400), true, true));
+        when(cloudAdapter.fetchClientInfoFromCloud("1e-ac-d1-82-1c-15"))
+                .thenReturn(new com.wificaptive.gateway.dto.GwnClientLiveStatus(
+                        true, true, false, "1E:AC:D1:82:1C:15", "", "192.168.80.206",
+                        "Other", 33_338_636L, 25_688_137L, "EC:74:D7:98:B0:42", now.minusSeconds(180), true, true));
+
+        var summary = cloudSyncService.syncActiveSessionsWithCloud("admin");
+
+        assertTrue(summary.cloudConnected());
+        assertEquals(3, summary.onlineCount());
+        assertEquals(0, summary.expiredCount());
+        assertEquals(SessionStatus.AUTHORIZED, desktopSession.getStatus());
+        assertEquals(SessionStatus.AUTHORIZED, growingTrafficSession.getStatus());
+        assertEquals(SessionStatus.AUTHORIZED, prematurelyExpired.getStatus());
+        assertEquals(33_338_636L, prematurelyExpired.getBytesDownloaded());
+        assertNull(prematurelyExpired.getRevokeReason());
+        assertEquals(SessionStatus.EXPIRED, replacedOld.getStatus());
+    }
+
+    @Test
     void testEnforceHardwareMacBlock_RevokesActiveSessionsAndBlocksOnCloud() {
         var cloudAdapter = mock(com.wificaptive.gateway.adapter.GwnCloudGatewayAdapter.class);
         var meshMonitor = mock(com.wificaptive.devices.mesh.MeshApMonitorService.class);

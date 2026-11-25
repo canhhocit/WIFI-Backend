@@ -670,10 +670,11 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
                         long txBytes = data.path("txBytes").asLong(0L);
                         String apId = formatMacAddress(data.path("apId").asText(""));
                         boolean wired = data.path("wired").asInt(0) == 1;
+                        boolean portalEnable = data.path("portalEnable").asInt(1) == 1;
                         Instant lastActiveAt = parseGwnLastActiveTime(data.path("lastactiveTime").asText(""));
                         return new com.wificaptive.gateway.dto.GwnClientLiveStatus(
                                 true, true, false, formattedMac, host, ipv4, dhcpOs,
-                                rxBytes, txBytes, apId, lastActiveAt, wired
+                                rxBytes, txBytes, apId, lastActiveAt, wired, portalEnable
                         );
                     }
                 }

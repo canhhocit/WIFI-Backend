@@ -49,6 +49,9 @@ public class NetworkDeviceService {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.wificaptive.geography.service.AdminScopeService adminScopeService;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.wificaptive.sessions.repository.GuestSessionRepository guestSessionRepository;
+
     public NetworkDeviceService(NetworkDeviceRepository deviceRepository,
                                 DeviceSwapLogRepository swapLogRepository,
                                 WifiLocationRepository locationRepository,
@@ -610,8 +613,9 @@ public class NetworkDeviceService {
     public List<com.wificaptive.gateway.dto.GwnClientDto> getConnectedClients(Long deviceId) {
         String apMac = null;
         String networkIdOverride = null;
+        NetworkDevice dev = null;
         if (deviceId != null) {
-            NetworkDevice dev = deviceRepository.findById(deviceId).orElse(null);
+            dev = deviceRepository.findById(deviceId).orElse(null);
             if (dev != null && MeshApMonitorService.isMeshAp(dev)) {
                 // Mesh AP: Grandstream không thấy client của mesh -> đọc thẳng từ thiết bị
                 MeshApSnapshotDto snap = meshApMonitorService.getSnapshot(dev, true);
@@ -626,9 +630,53 @@ public class NetworkDeviceService {
                 networkIdOverride = dev.getGwnNetworkId();
             }
         }
-        return (networkIdOverride != null && !networkIdOverride.isBlank())
+        List<com.wificaptive.gateway.dto.GwnClientDto> cloudClients = (networkIdOverride != null && !networkIdOverride.isBlank())
                 ? gwnCloudGatewayAdapter.getConnectedClientsFromCloud(apMac, networkIdOverride)
                 : gwnCloudGatewayAdapter.getConnectedClientsFromCloud(apMac);
+        if (!cloudClients.isEmpty()) {
+            return cloudClients;
+        }
+        // GWN7002 router often returns empty on v1.0.0/client/list for clients behind LAN/Mesh APs;
+        // enrich from active Captive Portal sessions + v1.0.0/client/info so admins still see live guests.
+        if (guestSessionRepository != null && dev != null && dev.getLocationId() != null) {
+            Instant now = Instant.now();
+            List<com.wificaptive.sessions.entity.GuestSession> activeSessions =
+                    guestSessionRepository.findByStatusWithLocation(com.wificaptive.sessions.entity.SessionStatus.AUTHORIZED).stream()
+                            .filter(s -> s.getLocation() != null
+                                    && dev.getLocationId().equals(s.getLocation().getId())
+                                    && (s.getExpiresAt() == null || s.getExpiresAt().isAfter(now)))
+                            .toList();
+            List<com.wificaptive.gateway.dto.GwnClientDto> fallbackClients = new ArrayList<>();
+            for (var s : activeSessions) {
+                var live = (networkIdOverride != null && !networkIdOverride.isBlank())
+                        ? gwnCloudGatewayAdapter.fetchClientInfoFromCloud(s.getMacAddress(), networkIdOverride)
+                        : gwnCloudGatewayAdapter.fetchClientInfoFromCloud(s.getMacAddress());
+                String host = (live.exists() && live.hostname() != null && !live.hostname().isBlank())
+                        ? live.hostname()
+                        : (s.getGuestName() != null ? s.getGuestName() : "Khách Wi-Fi");
+                String ip = (live.exists() && live.ipv4() != null && !live.ipv4().isBlank())
+                        ? live.ipv4()
+                        : s.getIpAddress();
+                long rx = live.exists() && live.rxBytes() > 0 ? live.rxBytes() : (s.getBytesDownloaded() != null ? s.getBytesDownloaded() : 0L);
+                long tx = live.exists() && live.txBytes() > 0 ? live.txBytes() : (s.getBytesUploaded() != null ? s.getBytesUploaded() : 0L);
+                long connectSec = s.getAuthorizedAt() != null ? Math.max(0L, now.getEpochSecond() - s.getAuthorizedAt().getEpochSecond()) : 0L;
+                fallbackClients.add(new com.wificaptive.gateway.dto.GwnClientDto(
+                        s.getMacAddress().toUpperCase(),
+                        ip,
+                        host,
+                        "WiFi Cong Cong Hai Phong",
+                        dev.getMacAddress(),
+                        dev.getModel() != null ? dev.getModel() : "GWN7002",
+                        live.exists() && live.wired() ? "LAN/Mesh" : "Wi-Fi",
+                        null,
+                        rx,
+                        tx,
+                        connectSec
+                ));
+            }
+            return fallbackClients;
+        }
+        return cloudClients;
     }
 
     public com.wificaptive.gateway.dto.GwnUpgradeResult upgradeFirmware(List<Long> deviceIds, String targetFirmware, String actor) {
