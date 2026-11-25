@@ -671,7 +671,9 @@ public class NetworkDeviceService {
                         null,
                         rx,
                         tx,
-                        connectSec
+                        connectSec,
+                        null,
+                        live.exists() && live.wired()
                 ));
             }
             return fallbackClients;
