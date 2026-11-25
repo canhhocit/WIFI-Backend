@@ -6,12 +6,16 @@ import com.wificaptive.settings.dto.RolePermissionDto;
 import com.wificaptive.settings.dto.UpdateRolePermissionRequest;
 import com.wificaptive.settings.entity.RolePermission;
 import com.wificaptive.settings.repository.RolePermissionRepository;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 
-@Service
+@Service("rbac")
 public class RolePermissionService {
 
     private final RolePermissionRepository repository;
@@ -74,6 +78,50 @@ public class RolePermissionService {
         return requests.stream()
                 .map(req -> updatePermission(req, currentUsername))
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public boolean hasPermission(String moduleName, String action) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) {
+            return false;
+        }
+
+        for (GrantedAuthority authority : auth.getAuthorities()) {
+            String role = authority.getAuthority();
+            if ("ROLE_SUPER_ADMIN".equals(role) || "ROLE_ADMIN".equals(role)) {
+                return true;
+            }
+        }
+
+        for (GrantedAuthority authority : auth.getAuthorities()) {
+            String role = authority.getAuthority();
+            if (!role.startsWith("ROLE_")) {
+                role = "ROLE_" + role;
+            }
+
+            Optional<RolePermission> permOpt = repository.findByRoleNameAndModuleName(role, moduleName);
+            if (permOpt.isEmpty() && "ROLE_DISTRICT_OFFICER".equals(role)) {
+                permOpt = repository.findByRoleNameAndModuleName("ROLE_COMMUNE_OFFICER", moduleName);
+            }
+
+            if (permOpt.isPresent()) {
+                RolePermission perm = permOpt.get();
+                boolean allowed = switch (action.toUpperCase()) {
+                    case "VIEW" -> perm.isCanView();
+                    case "CREATE" -> perm.isCanCreate();
+                    case "EDIT" -> perm.isCanEdit();
+                    case "DELETE" -> perm.isCanDelete();
+                    case "APPROVE" -> perm.isCanApprove();
+                    default -> false;
+                };
+                if (allowed) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 }
 

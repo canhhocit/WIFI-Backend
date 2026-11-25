@@ -99,7 +99,7 @@ public class NetworkDeviceController {
     }
 
     @PostMapping("/swap")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
+    @PreAuthorize("@rbac.hasPermission('DEVICES', 'EDIT')")
     public ResponseEntity<ApiResponse<NetworkDeviceDto>> swapDevice(
             @Valid @RequestBody DeviceSwapRequest request,
             Authentication auth) {
@@ -108,14 +108,14 @@ public class NetworkDeviceController {
     }
 
     @PostMapping("/sync-grandstream")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
+    @PreAuthorize("@rbac.hasPermission('DEVICES', 'EDIT')")
     public ResponseEntity<ApiResponse<DeviceSyncSummaryDto>> syncFromGrandstream(Authentication auth) {
         DeviceSyncSummaryDto summary = deviceService.syncFromGrandstream(auth != null ? auth.getName() : "admin");
         return ResponseEntity.ok(ApiResponse.ok(summary.getMessage(), summary));
     }
 
     @PostMapping("/{id}/reboot")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
+    @PreAuthorize("@rbac.hasPermission('DEVICES', 'EDIT')")
     public ResponseEntity<ApiResponse<NetworkDeviceDto>> rebootDevice(
             @PathVariable Long id,
             Authentication auth) {
@@ -131,7 +131,7 @@ public class NetworkDeviceController {
     
     /** Import danh sách thiết bị bàn giao (MAC + S/N ...). dryRun=true chỉ kiểm tra, không ghi. */
     @PostMapping("/import")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
+    @PreAuthorize("@rbac.hasPermission('DEVICES', 'CREATE') or @rbac.hasPermission('DEVICES', 'EDIT')")
     public ResponseEntity<ApiResponse<com.wificaptive.devices.dto.NetworkDeviceImportResultDto>> importDevices(
             @RequestParam("file") org.springframework.web.multipart.MultipartFile file,
             @RequestParam(defaultValue = "true") boolean dryRun,
@@ -160,7 +160,7 @@ public class NetworkDeviceController {
     }
 
     @PostMapping("/upgrade-firmware")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
+    @PreAuthorize("@rbac.hasPermission('DEVICES', 'APPROVE') or @rbac.hasPermission('DEVICES', 'EDIT')")
     public ResponseEntity<ApiResponse<com.wificaptive.gateway.dto.GwnUpgradeResult>> upgradeFirmware(
             @RequestBody UpgradeFirmwareRequest req,
             Authentication auth) {

@@ -28,7 +28,7 @@ public class AdminUserController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN')")
+    @PreAuthorize("@rbac.hasPermission('USERS', 'VIEW')")
     public ResponseEntity<ApiResponse<PageResponse<AdminUserDto>>> getUsers(
             @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "0") int page,
@@ -40,14 +40,14 @@ public class AdminUserController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN')")
+    @PreAuthorize("@rbac.hasPermission('USERS', 'VIEW')")
     public ResponseEntity<ApiResponse<AdminUserDto>> getUserById(@PathVariable Long id) {
         AdminUserDto user = adminUserService.getUserById(id);
         return ResponseEntity.ok(ApiResponse.ok(user));
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN')")
+    @PreAuthorize("@rbac.hasPermission('USERS', 'CREATE')")
     public ResponseEntity<ApiResponse<AdminUserDto>> createUser(
             @Valid @RequestBody CreateAdminUserRequest request,
             @AuthenticationPrincipal UserDetails principal
@@ -58,7 +58,7 @@ public class AdminUserController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN')")
+    @PreAuthorize("@rbac.hasPermission('USERS', 'EDIT')")
     public ResponseEntity<ApiResponse<AdminUserDto>> updateUser(
             @PathVariable Long id,
             @Valid @RequestBody UpdateAdminUserRequest request,
@@ -70,7 +70,7 @@ public class AdminUserController {
     }
 
     @PatchMapping("/{id}/toggle-status")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN')")
+    @PreAuthorize("@rbac.hasPermission('USERS', 'EDIT')")
     public ResponseEntity<ApiResponse<AdminUserDto>> toggleUserStatus(
             @PathVariable Long id,
             @AuthenticationPrincipal UserDetails principal
@@ -81,7 +81,7 @@ public class AdminUserController {
     }
 
     @PatchMapping("/{id}/unlock")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN')")
+    @PreAuthorize("@rbac.hasPermission('USERS', 'EDIT')")
     public ResponseEntity<ApiResponse<AdminUserDto>> unlockUser(
             @PathVariable Long id,
             @AuthenticationPrincipal UserDetails principal
@@ -92,7 +92,7 @@ public class AdminUserController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("@rbac.hasPermission('USERS', 'DELETE')")
     public ResponseEntity<ApiResponse<Void>> deleteUser(
             @PathVariable Long id,
             @AuthenticationPrincipal UserDetails principal

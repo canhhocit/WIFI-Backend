@@ -29,7 +29,7 @@ public class DnsDomainRuleController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN', 'DISTRICT_OFFICER', 'VIETTEL_ENGINEER')")
+    @PreAuthorize("@rbac.hasPermission('CAMPAIGNS', 'VIEW')")
     public ResponseEntity<ApiResponse<PageResponse<DnsDomainRuleDto>>> getRules(
             @RequestParam(required = false) String ruleType,
             @RequestParam(required = false) String search,
@@ -42,19 +42,19 @@ public class DnsDomainRuleController {
     }
 
     @GetMapping("/whitelist")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN', 'DISTRICT_OFFICER', 'VIETTEL_ENGINEER')")
+    @PreAuthorize("@rbac.hasPermission('CAMPAIGNS', 'VIEW')")
     public ResponseEntity<ApiResponse<List<DnsDomainRuleDto>>> getActiveWhitelist() {
         return ResponseEntity.ok(ApiResponse.ok(service.getActiveWhitelist()));
     }
 
     @GetMapping("/blocklist")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN', 'DISTRICT_OFFICER', 'VIETTEL_ENGINEER')")
+    @PreAuthorize("@rbac.hasPermission('CAMPAIGNS', 'VIEW')")
     public ResponseEntity<ApiResponse<List<DnsDomainRuleDto>>> getActiveBlocklist() {
         return ResponseEntity.ok(ApiResponse.ok(service.getActiveBlocklist()));
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN', 'VIETTEL_ENGINEER')")
+    @PreAuthorize("@rbac.hasPermission('CAMPAIGNS', 'CREATE')")
     public ResponseEntity<ApiResponse<DnsDomainRuleDto>> createRule(
             @Valid @RequestBody CreateDnsDomainRuleRequest request,
             @AuthenticationPrincipal UserDetails principal
@@ -65,7 +65,7 @@ public class DnsDomainRuleController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN', 'VIETTEL_ENGINEER')")
+    @PreAuthorize("@rbac.hasPermission('CAMPAIGNS', 'EDIT')")
     public ResponseEntity<ApiResponse<DnsDomainRuleDto>> updateRule(
             @PathVariable Long id,
             @Valid @RequestBody CreateDnsDomainRuleRequest request,
@@ -77,7 +77,7 @@ public class DnsDomainRuleController {
     }
 
     @PatchMapping("/{id}/toggle")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN', 'VIETTEL_ENGINEER')")
+    @PreAuthorize("@rbac.hasPermission('CAMPAIGNS', 'EDIT')")
     public ResponseEntity<ApiResponse<DnsDomainRuleDto>> toggleRule(
             @PathVariable Long id,
             @AuthenticationPrincipal UserDetails principal
@@ -88,7 +88,7 @@ public class DnsDomainRuleController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN', 'VIETTEL_ENGINEER')")
+    @PreAuthorize("@rbac.hasPermission('CAMPAIGNS', 'DELETE')")
     public ResponseEntity<ApiResponse<Void>> deleteRule(
             @PathVariable Long id,
             @AuthenticationPrincipal UserDetails principal

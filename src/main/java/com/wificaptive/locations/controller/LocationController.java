@@ -11,6 +11,7 @@ import jakarta.validation.Valid;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -59,6 +60,7 @@ public class LocationController {
     }
 
     @PostMapping
+    @PreAuthorize("@rbac.hasPermission('LOCATIONS', 'CREATE')")
     public ApiResponse<LocationDto> createLocation(
             @Valid @RequestBody CreateLocationRequest request,
             @AuthenticationPrincipal UserPrincipal principal) {
@@ -67,6 +69,7 @@ public class LocationController {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("@rbac.hasPermission('LOCATIONS', 'EDIT')")
     public ApiResponse<LocationDto> updateLocation(
             @PathVariable Long id,
             @Valid @RequestBody UpdateLocationRequest request,
@@ -76,6 +79,7 @@ public class LocationController {
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("@rbac.hasPermission('LOCATIONS', 'DELETE')")
     public ApiResponse<Void> deleteLocation(
             @PathVariable Long id,
             @AuthenticationPrincipal UserPrincipal principal) {
@@ -84,6 +88,7 @@ public class LocationController {
     }
 
     @PostMapping("/import/validate")
+    @PreAuthorize("@rbac.hasPermission('LOCATIONS', 'CREATE')")
     public ApiResponse<ExcelImportSummaryDto> validateExcel(
             @RequestParam("file") MultipartFile file) throws IOException {
         ExcelImportSummaryDto summary = excelService.validateExcel(file.getInputStream());
@@ -91,6 +96,7 @@ public class LocationController {
     }
 
     @PostMapping("/import/commit")
+    @PreAuthorize("@rbac.hasPermission('LOCATIONS', 'CREATE')")
     public ApiResponse<Integer> commitExcel(
             @RequestParam("sessionId") String sessionId,
             @AuthenticationPrincipal UserPrincipal principal) {

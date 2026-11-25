@@ -18,7 +18,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping({"/api/v1/admin/reports/government", "/v1/admin/reports/government"})
-@PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN', 'DISTRICT_OFFICER')")
+@PreAuthorize("@rbac.hasPermission('SETTINGS', 'VIEW')")
 public class GovernmentReportController {
 
     private final GovernmentReportService reportService;

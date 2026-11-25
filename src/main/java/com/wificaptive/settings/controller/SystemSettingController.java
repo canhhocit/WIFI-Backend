@@ -24,19 +24,19 @@ public class SystemSettingController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN')")
+    @PreAuthorize("@rbac.hasPermission('SETTINGS', 'VIEW')")
     public ResponseEntity<ApiResponse<List<SystemSettingDto>>> getAllSettings() {
         return ResponseEntity.ok(ApiResponse.ok(service.getAllSettings()));
     }
 
     @GetMapping("/{key}")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN')")
+    @PreAuthorize("@rbac.hasPermission('SETTINGS', 'VIEW')")
     public ResponseEntity<ApiResponse<SystemSettingDto>> getSettingByKey(@PathVariable String key) {
         return ResponseEntity.ok(ApiResponse.ok(service.getSettingByKey(key)));
     }
 
     @PutMapping("/{key}")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN')")
+    @PreAuthorize("@rbac.hasPermission('SETTINGS', 'EDIT')")
     public ResponseEntity<ApiResponse<SystemSettingDto>> updateSetting(
             @PathVariable String key,
             @Valid @RequestBody UpdateSystemSettingRequest request,

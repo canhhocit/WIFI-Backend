@@ -5,6 +5,7 @@ import com.wificaptive.common.dto.PageResponse;
 import com.wificaptive.incidents.dto.*;
 import com.wificaptive.incidents.service.IncidentTicketService;
 import jakarta.validation.Valid;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import java.util.Map;
@@ -33,6 +34,7 @@ public class IncidentController {
     }
 
     @PostMapping
+    @PreAuthorize("@rbac.hasPermission('INCIDENTS', 'CREATE')")
     public ApiResponse<IncidentTicketDto> createTicket(
             @Valid @RequestBody CreateIncidentRequest req,
             Authentication auth) {
@@ -41,6 +43,7 @@ public class IncidentController {
     }
 
     @RequestMapping(value = "/{id}/assign", method = {RequestMethod.POST, RequestMethod.PUT})
+    @PreAuthorize("@rbac.hasPermission('INCIDENTS', 'EDIT') or @rbac.hasPermission('INCIDENTS', 'APPROVE')")
     public ApiResponse<IncidentTicketDto> assignTicket(
             @PathVariable Long id,
             @Valid @RequestBody AssignIncidentRequest req,
@@ -50,6 +53,7 @@ public class IncidentController {
     }
 
     @RequestMapping(value = "/{id}/resolve", method = {RequestMethod.POST, RequestMethod.PUT})
+    @PreAuthorize("@rbac.hasPermission('INCIDENTS', 'EDIT') or @rbac.hasPermission('INCIDENTS', 'APPROVE')")
     public ApiResponse<IncidentTicketDto> resolveTicket(
             @PathVariable Long id,
             @Valid @RequestBody ResolveIncidentRequest req,
@@ -59,6 +63,7 @@ public class IncidentController {
     }
 
     @RequestMapping(value = "/{id}/close", method = {RequestMethod.POST, RequestMethod.PUT})
+    @PreAuthorize("@rbac.hasPermission('INCIDENTS', 'APPROVE') or @rbac.hasPermission('INCIDENTS', 'EDIT')")
     public ApiResponse<IncidentTicketDto> closeTicket(
             @PathVariable Long id,
             @RequestBody(required = false) Map<String, String> body,
@@ -69,6 +74,7 @@ public class IncidentController {
     }
 
     @RequestMapping(value = "/{id}/reopen", method = {RequestMethod.POST, RequestMethod.PUT})
+    @PreAuthorize("@rbac.hasPermission('INCIDENTS', 'EDIT') or @rbac.hasPermission('INCIDENTS', 'APPROVE')")
     public ApiResponse<IncidentTicketDto> reopenTicket(
             @PathVariable Long id,
             @RequestBody(required = false) Map<String, String> body,

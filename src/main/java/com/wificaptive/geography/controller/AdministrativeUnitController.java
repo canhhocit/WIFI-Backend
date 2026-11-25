@@ -44,21 +44,21 @@ public class AdministrativeUnitController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
+    @PreAuthorize("@rbac.hasPermission('LOCATIONS', 'CREATE')")
     public ResponseEntity<ApiResponse<AdminUnitDto>> createUnit(@Valid @RequestBody AdminUnitCreateRequest request) {
         AdminUnitDto dto = unitService.createUnit(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok("Tạo đơn vị địa bàn thành công", dto));
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
+    @PreAuthorize("@rbac.hasPermission('LOCATIONS', 'EDIT')")
     public ResponseEntity<ApiResponse<AdminUnitDto>> updateUnit(@PathVariable Long id, @Valid @RequestBody AdminUnitCreateRequest request) {
         AdminUnitDto dto = unitService.updateUnit(id, request);
         return ResponseEntity.ok(ApiResponse.ok("Cập nhật đơn vị địa bàn thành công", dto));
     }
 
     @PostMapping("/merge")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
+    @PreAuthorize("@rbac.hasPermission('LOCATIONS', 'EDIT')")
     public ResponseEntity<ApiResponse<Void>> mergeUnits(@Valid @RequestBody MergeUnitsRequest request) {
         unitService.mergeUnits(request);
         return ResponseEntity.ok(ApiResponse.ok("Sáp nhập đơn vị địa bàn thành công", null));

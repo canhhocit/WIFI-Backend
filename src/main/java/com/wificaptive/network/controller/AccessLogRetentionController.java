@@ -16,7 +16,7 @@ import java.time.Instant;
 
 @RestController
 @RequestMapping({"/api/v1/admin/access-logs", "/v1/admin/access-logs"})
-@PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN')")
+@PreAuthorize("@rbac.hasPermission('INCIDENTS', 'VIEW')")
 public class AccessLogRetentionController {
 
     private final AccessLogRetentionService retentionService;

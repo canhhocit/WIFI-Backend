@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping({"/api/v1/admin/blacklist", "/v1/admin/blacklist"})
-@PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'SOTTTT_ADMIN')")
+@PreAuthorize("@rbac.hasPermission('INCIDENTS', 'VIEW')")
 public class MacBlacklistController {
 
     private final MacBlacklistService blacklistService;
@@ -40,6 +40,7 @@ public class MacBlacklistController {
     }
 
     @PostMapping
+    @PreAuthorize("@rbac.hasPermission('INCIDENTS', 'CREATE')")
     public ResponseEntity<ApiResponse<MacBlacklistDto>> addToBlacklist(
             @Valid @RequestBody CreateBlacklistRequest req,
             Authentication authentication
@@ -50,6 +51,7 @@ public class MacBlacklistController {
     }
 
     @PutMapping("/{id}/unblock")
+    @PreAuthorize("@rbac.hasPermission('INCIDENTS', 'DELETE') or @rbac.hasPermission('INCIDENTS', 'EDIT')")
     public ResponseEntity<ApiResponse<MacBlacklistDto>> unblock(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.ok(blacklistService.unblock(id)));
     }

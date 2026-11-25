@@ -7,6 +7,7 @@ import com.wificaptive.campaigns.service.CampaignService;
 import com.wificaptive.common.dto.ApiResponse;
 import com.wificaptive.common.dto.PageResponse;
 import jakarta.validation.Valid;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -34,6 +35,7 @@ public class CampaignController {
     }
 
     @PostMapping
+    @PreAuthorize("@rbac.hasPermission('CAMPAIGNS', 'CREATE')")
     public ApiResponse<CampaignDto> createCampaign(
             @Valid @RequestBody CreateCampaignRequest req,
             Authentication auth) {
@@ -42,6 +44,7 @@ public class CampaignController {
     }
 
     @PostMapping("/{id}/submit")
+    @PreAuthorize("@rbac.hasPermission('CAMPAIGNS', 'EDIT') or @rbac.hasPermission('CAMPAIGNS', 'CREATE')")
     public ApiResponse<CampaignDto> submitForApproval(
             @PathVariable Long id,
             Authentication auth) {
@@ -50,6 +53,7 @@ public class CampaignController {
     }
 
     @PostMapping("/{id}/approve")
+    @PreAuthorize("@rbac.hasPermission('CAMPAIGNS', 'APPROVE')")
     public ApiResponse<CampaignDto> approveCampaign(
             @PathVariable Long id,
             @RequestBody(required = false) ApproveCampaignRequest req,
@@ -59,6 +63,7 @@ public class CampaignController {
     }
 
     @PostMapping("/{id}/reject")
+    @PreAuthorize("@rbac.hasPermission('CAMPAIGNS', 'APPROVE')")
     public ApiResponse<CampaignDto> rejectCampaign(
             @PathVariable Long id,
             @RequestBody(required = false) ApproveCampaignRequest req,
@@ -68,6 +73,7 @@ public class CampaignController {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("@rbac.hasPermission('CAMPAIGNS', 'EDIT')")
     public ApiResponse<CampaignDto> updateCampaign(
             @PathVariable Long id,
             @Valid @RequestBody CreateCampaignRequest req,
@@ -77,6 +83,7 @@ public class CampaignController {
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("@rbac.hasPermission('CAMPAIGNS', 'DELETE')")
     public ApiResponse<Void> deleteCampaign(
             @PathVariable Long id,
             Authentication auth) {

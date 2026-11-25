@@ -10,6 +10,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -36,6 +37,7 @@ public class SurveyAdminController {
     }
 
     @PostMapping
+    @PreAuthorize("@rbac.hasPermission('CAMPAIGNS', 'CREATE')")
     public ApiResponse<SurveyDto> createSurvey(@Valid @RequestBody SurveyDto dto) {
         return ApiResponse.ok("Tạo bài khảo sát thành công", surveyService.createSurvey(dto));
     }
@@ -55,11 +57,13 @@ public class SurveyAdminController {
     }
 
     @PatchMapping("/{id}/toggle")
+    @PreAuthorize("@rbac.hasPermission('CAMPAIGNS', 'EDIT')")
     public ApiResponse<SurveyDto> toggleSurvey(@PathVariable Long id) {
         return ApiResponse.ok("Chuyển trạng thái khảo sát thành công", surveyService.toggleSurvey(id));
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("@rbac.hasPermission('CAMPAIGNS', 'DELETE')")
     public ApiResponse<Void> deleteSurvey(@PathVariable Long id) {
         surveyService.deleteSurvey(id);
         return ApiResponse.ok("Xóa bài khảo sát thành công", null);
