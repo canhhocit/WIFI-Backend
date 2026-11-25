@@ -147,40 +147,31 @@ public class LocationService {
     }
 
     private void applyDeviceSummary(LocationDto dto, List<com.wificaptive.devices.entity.NetworkDevice> devs) {
-        if (devs == null || devs.isEmpty()) {
-            dto.setAssignedDeviceCount(0);
-            dto.setHasGwnRouter(false);
-            dto.setGwnRouterOnline(false);
-            dto.setHealthStatus("GRAY");
-            return;
-        }
-        dto.setAssignedDeviceCount(devs.size());
-        boolean hasRouter = devs.stream().anyMatch(d -> "ROUTER".equalsIgnoreCase(d.getDeviceType()));
-        boolean routerOnline = devs.stream()
+        boolean hasRouter = devs != null && devs.stream().anyMatch(d -> "ROUTER".equalsIgnoreCase(d.getDeviceType()));
+        boolean routerOnline = devs != null && devs.stream()
                 .anyMatch(d -> "ROUTER".equalsIgnoreCase(d.getDeviceType()) && "ONLINE".equalsIgnoreCase(d.getStatus()));
+        dto.setAssignedDeviceCount(devs == null ? 0 : devs.size());
         dto.setHasGwnRouter(hasRouter);
         dto.setGwnRouterOnline(routerOnline);
-        dto.setHealthStatus(computeHealth(devs, hasRouter, routerOnline));
+        // activeApCount đã được map từ entity trong LocationDto.from (scheduler cập nhật nền).
+        dto.setHealthStatus(computeHealth(hasRouter, routerOnline, dto.getActiveApCount(), dto.getExpectedApCount()));
     }
 
     /**
-     * Tổng quan sức khỏe điểm theo 3 mức màu (bỏ qua thiết bị đã ngưng DECOMMISSIONED):
-     * - RED: có router GWN nhưng router OFFLINE -> cả điểm mất kết nối/mất liên lạc Grandstream.
-     * - ORANGE: router ONLINE nhưng có ít nhất 1 AP/mesh OFFLINE -> một phần mesh lỗi.
-     * - GREEN: router ONLINE và mọi AP/mesh ONLINE -> bình thường.
-     * - GRAY: chưa có router GWN gắn vào điểm (chưa đủ hạ tầng để đánh giá).
+     * Sức khỏe điểm theo mô hình "1 router + {expected} AP" (mặc định 4):
+     * - GRAY: chưa gán router GWN (chưa đủ hạ tầng để đánh giá).
+     * - RED: router OFFLINE/mất liên lạc Grandstream, hoặc 0 AP đang kết nối.
+     * - ORANGE: router ONLINE nhưng THIẾU AP (số cổng ON < số kỳ vọng).
+     * - GREEN: router ONLINE và đủ AP (số cổng ON >= số kỳ vọng).
+     * activeApCount null = scheduler chưa cập nhật -> tạm coi theo router (online=GREEN) để không báo đỏ oan.
      */
-    private String computeHealth(List<com.wificaptive.devices.entity.NetworkDevice> devs, boolean hasRouter, boolean routerOnline) {
+    private String computeHealth(boolean hasRouter, boolean routerOnline, Integer activeApCount, int expectedApCount) {
         if (!hasRouter) return "GRAY";
         if (!routerOnline) return "RED";
-        boolean anyApOffline = devs.stream()
-                .filter(d -> {
-                    String t = d.getDeviceType() == null ? "" : d.getDeviceType().toUpperCase(java.util.Locale.ROOT);
-                    return t.equals("ACCESS_POINT") || t.equals("AP");
-                })
-                .filter(d -> !"DECOMMISSIONED".equalsIgnoreCase(d.getStatus()))
-                .anyMatch(d -> "OFFLINE".equalsIgnoreCase(d.getStatus()));
-        return anyApOffline ? "ORANGE" : "GREEN";
+        if (activeApCount == null) return "GREEN";
+        if (activeApCount <= 0) return "RED";
+        if (activeApCount < expectedApCount) return "ORANGE";
+        return "GREEN";
     }
 
     @Transactional(readOnly = true)

@@ -17,6 +17,11 @@ import java.util.Optional;
 public interface WifiLocationRepository extends JpaRepository<WifiLocation, Long> {
     Optional<WifiLocation> findBySlug(String slug);
     Optional<WifiLocation> findByLocationCode(String locationCode);
+
+    /** Cache số cổng LAN ON (= số AP thực) của điểm, do scheduler nền ghi; tránh gọi GWN khi hiển thị danh sách. */
+    @Modifying
+    @Query("UPDATE WifiLocation l SET l.activeApCount = :cnt WHERE l.id = :id")
+    void updateActiveApCount(@Param("id") Long id, @Param("cnt") Integer cnt);
     Optional<WifiLocation> findBySlugAndDeletedFalse(String slug);
     Optional<WifiLocation> findByLocationCodeAndDeletedFalse(String locationCode);
     boolean existsBySlug(String slug);

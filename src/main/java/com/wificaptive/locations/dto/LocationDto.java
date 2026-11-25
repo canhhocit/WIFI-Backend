@@ -36,7 +36,11 @@ public class LocationDto {
     private boolean hasGwnRouter;
     private boolean gwnRouterOnline;
     private int assignedDeviceCount;
-    /** Tổng quan sức khỏe điểm: GREEN (bình thường), ORANGE (một phần mesh lỗi), RED (mất kết nối/router offline), GRAY (chưa có GWN). */
+    /** Số AP thực đang kết nối (= số cổng LAN ON của router GWN), cache từ scheduler. null = chưa có dữ liệu. */
+    private Integer activeApCount;
+    /** Số AP kỳ vọng mỗi điểm (cố định 4 theo đề bài). */
+    private int expectedApCount = 4;
+    /** Tổng quan sức khỏe điểm: GREEN (đủ AP), ORANGE (thiếu AP), RED (router offline/mất kết nối hoặc 0 AP), GRAY (chưa có GWN). */
     private String healthStatus;
     private Instant createdAt;
     private Instant updatedAt;
@@ -70,6 +74,7 @@ public class LocationDto {
         dto.setLongitude(loc.getLongitude());
         dto.setStatus(loc.getStatus() != null ? loc.getStatus() : (loc.isActive() ? "ACTIVE" : "INACTIVE"));
         dto.setStatusReason(loc.getStatusReason());
+        dto.setActiveApCount(loc.getActiveApCount());
         dto.setIspName(loc.getIspName());
         dto.setCircuitCode(loc.getCircuitCode());
         dto.setContactName(loc.getContactName());
@@ -284,4 +289,10 @@ public class LocationDto {
 
     public String getHealthStatus() { return healthStatus; }
     public void setHealthStatus(String healthStatus) { this.healthStatus = healthStatus; }
+
+    public Integer getActiveApCount() { return activeApCount; }
+    public void setActiveApCount(Integer activeApCount) { this.activeApCount = activeApCount; }
+
+    public int getExpectedApCount() { return expectedApCount; }
+    public void setExpectedApCount(int expectedApCount) { this.expectedApCount = expectedApCount; }
 }

@@ -65,6 +65,10 @@ public class WifiLocation extends BaseEntity {
     @Column(name = "status", length = 20)
     private String status = "ACTIVE";
 
+    /** Số cổng LAN đang ON (= số AP thực kết nối) của router GWN, do scheduler nền cập nhật. */
+    @Column(name = "active_ap_count")
+    private Integer activeApCount;
+
     @Column(name = "status_reason", length = 255)
     private String statusReason;
 
@@ -201,6 +205,9 @@ public class WifiLocation extends BaseEntity {
 
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+
+    public Integer getActiveApCount() { return activeApCount; }
+    public void setActiveApCount(Integer activeApCount) { this.activeApCount = activeApCount; }
 
     public String getStatusReason() { return statusReason; }
     public void setStatusReason(String statusReason) { this.statusReason = statusReason; }
