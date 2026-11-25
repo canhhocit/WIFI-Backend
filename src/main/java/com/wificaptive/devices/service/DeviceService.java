@@ -44,6 +44,13 @@ public class DeviceService {
     private GuestSessionRepository guestSessionRepository;
     @Autowired(required = false)
     private SurveyResponseRepository surveyResponseRepository;
+    @Autowired(required = false)
+    private com.wificaptive.surveys.repository.SurveyQuestionRepository surveyQuestionRepository;
+    @Autowired(required = false)
+    private com.wificaptive.surveys.repository.SurveyRepository surveyRepository;
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper DETAIL_MAPPER =
+            new com.fasterxml.jackson.databind.ObjectMapper();
 
     // In-memory cache to prevent repetitive DB queries and row-lock updates on peak loads
     private final ConcurrentHashMap<String, Device> activeDeviceCache = new ConcurrentHashMap<>();
@@ -167,7 +174,9 @@ public class DeviceService {
             for (GuestSession s : guestSessionRepository.findByMacLowerInOrderByCreatedAtDesc(List.of(macLower))) {
                 Map<String, Object> m = new LinkedHashMap<>();
                 m.put("locationName", s.getLocation() != null ? s.getLocation().getName() : null);
-                m.put("guestName", s.getGuestName());
+                // "Guest User" là tên mặc định khi khách không khai -> trả null để giao diện hiện "khách vãng lai".
+                String gn = s.getGuestName();
+                m.put("guestName", (gn == null || gn.isBlank() || "Guest User".equalsIgnoreCase(gn.trim())) ? null : gn.trim());
                 m.put("guestContact", s.getGuestContact());
                 m.put("status", s.getStatus() != null ? s.getStatus().name() : null);
                 m.put("ipAddress", s.getIpAddress());
@@ -181,12 +190,14 @@ public class DeviceService {
         }
         List<Map<String, Object>> surveys = new ArrayList<>();
         if (surveyResponseRepository != null && device.getMacAddress() != null) {
+            java.util.Map<Long, java.util.List<com.wificaptive.surveys.entity.SurveyQuestion>> qCache = new HashMap<>();
+            java.util.Map<Long, String> titleCache = new HashMap<>();
             for (SurveyResponse r : surveyResponseRepository.findByClientMacIgnoreCaseOrderBySubmittedAtDesc(device.getMacAddress())) {
                 Map<String, Object> m = new LinkedHashMap<>();
                 m.put("surveyId", r.getSurveyId());
-                m.put("locationId", r.getLocationId());
-                m.put("answersJson", r.getAnswersJson());
+                m.put("surveyTitle", resolveSurveyTitle(r.getSurveyId(), titleCache));
                 m.put("submittedAt", r.getSubmittedAt());
+                m.put("answers", resolveSurveyAnswers(r, qCache)); // [{question, answer}] đã dịch đẹp
                 surveys.add(m);
             }
         }
@@ -195,6 +206,48 @@ public class DeviceService {
         out.put("sessions", sessions);
         out.put("surveys", surveys);
         return out;
+    }
+
+    private String resolveSurveyTitle(Long surveyId, java.util.Map<Long, String> cache) {
+        if (surveyId == null || surveyRepository == null) return null;
+        return cache.computeIfAbsent(surveyId, id ->
+                surveyRepository.findById(id).map(com.wificaptive.surveys.entity.Survey::getTitle).orElse("Khảo sát #" + id));
+    }
+
+    /** Dịch answersJson (questionId -> giá trị) thành danh sách {question, answer} đọc được theo thứ tự câu hỏi. */
+    private List<Map<String, Object>> resolveSurveyAnswers(
+            SurveyResponse r, java.util.Map<Long, java.util.List<com.wificaptive.surveys.entity.SurveyQuestion>> qCache) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        if (r.getSurveyId() == null || surveyQuestionRepository == null) return out;
+        Map<String, Object> ans;
+        try {
+            ans = DETAIL_MAPPER.readValue(r.getAnswersJson() == null ? "{}" : r.getAnswersJson(),
+                    new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
+        } catch (Exception e) {
+            ans = java.util.Collections.emptyMap();
+        }
+        java.util.List<com.wificaptive.surveys.entity.SurveyQuestion> questions = qCache.computeIfAbsent(
+                r.getSurveyId(), id -> surveyQuestionRepository.findBySurveyIdOrderBySortOrderAsc(id));
+        for (com.wificaptive.surveys.entity.SurveyQuestion q : questions) {
+            Object val = ans.get(String.valueOf(q.getId()));
+            if (val == null) continue;
+            Map<String, Object> a = new LinkedHashMap<>();
+            a.put("question", q.getQuestionText());
+            a.put("answer", formatSurveyAnswer(q.getQuestionType(), val));
+            out.add(a);
+        }
+        return out;
+    }
+
+    private String formatSurveyAnswer(String questionType, Object val) {
+        if (val instanceof java.util.List<?> list) {
+            return list.stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(", "));
+        }
+        String s = String.valueOf(val);
+        if ("RATING".equalsIgnoreCase(questionType)) {
+            return s + "/5";
+        }
+        return s;
     }
 
     @Transactional

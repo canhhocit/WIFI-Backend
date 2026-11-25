@@ -350,11 +350,19 @@ public class NetworkDeviceService {
                         gwnRouter.getMacAddress() != null ? gwnRouter.getMacAddress().replaceAll("[^0-9A-Fa-f]", "") : null,
                         gwnRouter.getGwnNetworkId())
                 : gwnCloudGatewayAdapter.fetchRouterPorts();
+        // Mô hình: mỗi điểm kỳ vọng EXPECTED_AP (4) AP = 4 cổng LAN ON. Đếm số cổng đang ON.
+        final int expectedAp = 4;
+        int onCount = 0;
+        for (Boolean v : ports.lanUpBySilk().values()) if (Boolean.TRUE.equals(v)) onCount++;
+
         java.util.List<Map<String, Object>> list = new java.util.ArrayList<>();
+        // Luôn hiện: cổng ON và cổng đã gán mesh. Cổng TRỐNG đang down chỉ hiện khi CÒN THIẾU AP
+        // (onCount < 4) để lộ đúng chỗ thiếu; khi đã đủ (>=4) thì ẩn cổng trống thừa -> router nhiều
+        // cổng (7-8 LAN) không hiển thị hàng loạt OFFLINE giả, chỉ cần 4 cổng ON là "đủ", không báo lỗi.
         for (Map.Entry<String, Boolean> e : ports.lanUpBySilk().entrySet()) {
             boolean up = Boolean.TRUE.equals(e.getValue());
             NetworkDevice mesh = meshByPort.get(e.getKey());
-            if (!up && mesh == null) continue; // cổng trống, chưa gán -> không phải AP
+            if (!up && mesh == null && onCount >= expectedAp) continue;
             Map<String, Object> pm = new java.util.LinkedHashMap<>();
             pm.put("port", e.getKey());
             pm.put("label", "AP cổng LAN" + e.getKey());

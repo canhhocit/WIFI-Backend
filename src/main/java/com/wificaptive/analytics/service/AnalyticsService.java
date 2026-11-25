@@ -105,17 +105,35 @@ public class AnalyticsService {
         long switchOnline = netDevs.stream().filter(d -> "SWITCH".equalsIgnoreCase(d.getDeviceType()) && "ONLINE".equalsIgnoreCase(d.getStatus())).count();
         long switchOffline = netDevs.stream().filter(d -> "SWITCH".equalsIgnoreCase(d.getDeviceType()) && !"ONLINE".equalsIgnoreCase(d.getStatus())).count();
 
-        long apOnline = netDevs.stream().filter(d -> ("ACCESS_POINT".equalsIgnoreCase(d.getDeviceType()) || "AP".equalsIgnoreCase(d.getDeviceType())) && "ONLINE".equalsIgnoreCase(d.getStatus())).count();
-        // UNKNOWN = chưa được giám sát trực tiếp: không tính là Offline để tránh báo lỗi giả
-        long apUnmonitored = netDevs.stream().filter(d -> ("ACCESS_POINT".equalsIgnoreCase(d.getDeviceType()) || "AP".equalsIgnoreCase(d.getDeviceType())) && "UNKNOWN".equalsIgnoreCase(d.getStatus())).count();
-        long apOffline = netDevs.stream().filter(d -> ("ACCESS_POINT".equalsIgnoreCase(d.getDeviceType()) || "AP".equalsIgnoreCase(d.getDeviceType())) && !"ONLINE".equalsIgnoreCase(d.getStatus()) && !"UNKNOWN".equalsIgnoreCase(d.getStatus())).count();
+        // AP theo mô hình "AP theo cổng GWN": mỗi điểm có router kỳ vọng 4 AP = 4 cổng LAN ON.
+        // AP Online = tổng số cổng LAN ON (active_ap_count cache theo điểm); Offline = số còn THIẾU so với kỳ vọng.
+        // Không phụ thuộc AP có đăng ký trong DB hay không (zero-touch).
+        final int expectedApPerSite = 4;
+        java.util.Set<Long> routerLocationIds = netDevs.stream()
+                .filter(d -> "ROUTER".equalsIgnoreCase(d.getDeviceType()) && d.getLocationId() != null)
+                .map(com.wificaptive.devices.entity.NetworkDevice::getLocationId)
+                .collect(java.util.stream.Collectors.toSet());
+        java.util.Map<Long, Integer> apCountByLoc = new java.util.HashMap<>();
+        for (com.wificaptive.locations.entity.WifiLocation loc : locationRepository.findByActiveTrueAndDeletedFalse()) {
+            if (loc.getActiveApCount() != null) apCountByLoc.put(loc.getId(), loc.getActiveApCount());
+        }
+        long apOnline = 0;
+        for (Long locId : routerLocationIds) {
+            Integer c = apCountByLoc.get(locId);
+            if (c != null) apOnline += Math.max(0, c);
+        }
+        long apExpected = (long) expectedApPerSite * routerLocationIds.size();
+        long apOffline = Math.max(0, apExpected - apOnline); // số AP đang thiếu/off so với kỳ vọng
+        long apUnmonitored = 0;
 
         long clientWireless = activeSessions;
         long clientWired = 0;
 
         long errorLocs = Math.max(0, totalLocations - activeLocations);
-        long totalDevsCount = netDevs.size();
-        long errorDevsCount = netDevs.stream().filter(d -> !"ONLINE".equalsIgnoreCase(d.getStatus()) && !"UNKNOWN".equalsIgnoreCase(d.getStatus())).count();
+        // Tổng thiết bị = router (đăng ký) + tổng AP kỳ vọng (4/điểm có router); Lỗi = router off + AP thiếu.
+        long routerTotal = netDevs.stream().filter(d -> "ROUTER".equalsIgnoreCase(d.getDeviceType())).count();
+        long totalDevsCount = routerTotal + apExpected;
+        long errorDevsCount = routerOffline + apOffline;
 
         DeviceTopologySummaryDto topology = new DeviceTopologySummaryDto(
                 totalLocations,
