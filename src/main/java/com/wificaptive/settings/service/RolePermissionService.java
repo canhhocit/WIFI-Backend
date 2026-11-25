@@ -26,18 +26,48 @@ public class RolePermissionService {
         this.auditService = auditService;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public List<RolePermissionDto> getAllPermissions() {
+        ensureDefaultPermissions();
         return repository.findAll().stream()
                 .map(RolePermissionDto::from)
                 .toList();
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public List<RolePermissionDto> getPermissionsByRole(String roleName) {
+        ensureDefaultPermissions();
         return repository.findByRoleName(roleName).stream()
                 .map(RolePermissionDto::from)
                 .toList();
+    }
+
+    @Transactional
+    public void ensureDefaultPermissions() {
+        String[] modules = {"LOCATIONS", "DEVICES", "CAMPAIGNS", "INCIDENTS", "USERS", "SETTINGS"};
+        String[] roles = {"ROLE_SOTTTT_ADMIN", "ROLE_COMMUNE_OFFICER"};
+
+        for (String role : roles) {
+            List<RolePermission> rolePerms = repository.findByRoleName(role);
+            boolean needsRepair = rolePerms.isEmpty() || rolePerms.stream().noneMatch(RolePermission::isCanView);
+            if (needsRepair) {
+                for (String module : modules) {
+                    RolePermission perm = repository.findByRoleNameAndModuleName(role, module)
+                            .orElseGet(() -> {
+                                RolePermission np = new RolePermission();
+                                np.setRoleName(role);
+                                np.setModuleName(module);
+                                return np;
+                            });
+                    perm.setCanView(getDefaultPermission(role, module, "VIEW"));
+                    perm.setCanCreate(getDefaultPermission(role, module, "CREATE"));
+                    perm.setCanEdit(getDefaultPermission(role, module, "EDIT"));
+                    perm.setCanDelete(getDefaultPermission(role, module, "DELETE"));
+                    perm.setCanApprove(getDefaultPermission(role, module, "APPROVE"));
+                    repository.save(perm);
+                }
+            }
+        }
     }
 
     @Transactional
