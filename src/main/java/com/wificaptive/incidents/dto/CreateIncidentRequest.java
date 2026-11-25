@@ -18,6 +18,7 @@ public class CreateIncidentRequest {
 
     private String description;
     private String assignedTo;
+    private String assignedGroup;
     private Integer slaHours; // e.g. 4 for CRITICAL, 8 for MAJOR
     private Long citizenReportId;
 
@@ -43,6 +44,8 @@ public class CreateIncidentRequest {
     public void setDescription(String description) { this.description = description; }
     public String getAssignedTo() { return assignedTo; }
     public void setAssignedTo(String assignedTo) { this.assignedTo = assignedTo; }
+    public String getAssignedGroup() { return assignedGroup; }
+    public void setAssignedGroup(String assignedGroup) { this.assignedGroup = assignedGroup; }
     public Integer getSlaHours() { return slaHours; }
     public void setSlaHours(Integer slaHours) { this.slaHours = slaHours; }
     public Long getCitizenReportId() { return citizenReportId; }

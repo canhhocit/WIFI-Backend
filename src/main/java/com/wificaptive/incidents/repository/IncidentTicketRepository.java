@@ -6,6 +6,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -33,5 +34,7 @@ public interface IncidentTicketRepository extends JpaRepository<IncidentTicket, 
 
     @org.springframework.data.jpa.repository.Query("SELECT t.locationId, COUNT(t) FROM IncidentTicket t WHERE t.locationId IS NOT NULL GROUP BY t.locationId")
     List<Object[]> countIncidentsGroupByLocation();
+
+    List<IncidentTicket> findByCreatedAtGreaterThanEqualAndCreatedAtLessThan(Instant start, Instant end);
 }
 

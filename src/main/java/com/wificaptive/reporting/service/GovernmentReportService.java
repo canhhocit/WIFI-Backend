@@ -1,7 +1,10 @@
 package com.wificaptive.reporting.service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wificaptive.geography.entity.AdministrativeUnit;
 import com.wificaptive.geography.repository.AdministrativeUnitRepository;
+import com.wificaptive.incidents.entity.IncidentTicket;
 import com.wificaptive.incidents.repository.IncidentTicketRepository;
 import com.wificaptive.locations.entity.WifiLocation;
 import com.wificaptive.locations.repository.WifiLocationRepository;
@@ -12,18 +15,27 @@ import com.wificaptive.reporting.dto.SubmitReportRequest;
 import com.wificaptive.reporting.entity.GovernmentReportHistory;
 import com.wificaptive.reporting.repository.GovernmentReportHistoryRepository;
 import com.wificaptive.sessions.repository.GuestSessionRepository;
+import com.wificaptive.surveys.entity.SurveyQuestion;
+import com.wificaptive.surveys.entity.SurveyResponse;
+import com.wificaptive.surveys.repository.SurveyQuestionRepository;
 import com.wificaptive.surveys.repository.SurveyResponseRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
 @Transactional(readOnly = true)
 public class GovernmentReportService {
+
+    private static final ZoneId VN_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
 
     // Target planned NVH baseline across 15 districts of Hai Phong (Sum = 1,584 points)
     private static final Map<String, Integer> DISTRICT_PLANNED_NVH = Map.ofEntries(
@@ -50,13 +62,15 @@ public class GovernmentReportService {
     private final AdministrativeUnitRepository adminUnitRepository;
     private final GovernmentReportHistoryRepository historyRepository;
     private final SurveyResponseRepository surveyResponseRepository;
+    private final SurveyQuestionRepository surveyQuestionRepository;
+    private final ObjectMapper objectMapper;
 
     public GovernmentReportService(
             WifiLocationRepository locationRepository,
             GuestSessionRepository sessionRepository,
             IncidentTicketRepository incidentRepository,
             AdministrativeUnitRepository adminUnitRepository) {
-        this(locationRepository, sessionRepository, incidentRepository, adminUnitRepository, null, null);
+        this(locationRepository, sessionRepository, incidentRepository, adminUnitRepository, null, null, null, new ObjectMapper());
     }
 
     public GovernmentReportService(
@@ -65,7 +79,17 @@ public class GovernmentReportService {
             IncidentTicketRepository incidentRepository,
             AdministrativeUnitRepository adminUnitRepository,
             GovernmentReportHistoryRepository historyRepository) {
-        this(locationRepository, sessionRepository, incidentRepository, adminUnitRepository, historyRepository, null);
+        this(locationRepository, sessionRepository, incidentRepository, adminUnitRepository, historyRepository, null, null, new ObjectMapper());
+    }
+
+    public GovernmentReportService(
+            WifiLocationRepository locationRepository,
+            GuestSessionRepository sessionRepository,
+            IncidentTicketRepository incidentRepository,
+            AdministrativeUnitRepository adminUnitRepository,
+            GovernmentReportHistoryRepository historyRepository,
+            SurveyResponseRepository surveyResponseRepository) {
+        this(locationRepository, sessionRepository, incidentRepository, adminUnitRepository, historyRepository, surveyResponseRepository, null, new ObjectMapper());
     }
 
     @Autowired
@@ -75,17 +99,69 @@ public class GovernmentReportService {
             IncidentTicketRepository incidentRepository,
             AdministrativeUnitRepository adminUnitRepository,
             GovernmentReportHistoryRepository historyRepository,
-            SurveyResponseRepository surveyResponseRepository) {
+            SurveyResponseRepository surveyResponseRepository,
+            SurveyQuestionRepository surveyQuestionRepository,
+            ObjectMapper objectMapper) {
         this.locationRepository = locationRepository;
         this.sessionRepository = sessionRepository;
         this.incidentRepository = incidentRepository;
         this.adminUnitRepository = adminUnitRepository;
         this.historyRepository = historyRepository;
         this.surveyResponseRepository = surveyResponseRepository;
+        this.surveyQuestionRepository = surveyQuestionRepository;
+        this.objectMapper = objectMapper != null ? objectMapper : new ObjectMapper();
+    }
+
+    private record PeriodWindow(Instant start, Instant end, String label) {}
+
+    private PeriodWindow resolvePeriodWindow(String period) {
+        String code = (period != null && !period.isBlank()) ? period.trim().toUpperCase() : "MONTH";
+        ZonedDateTime now = ZonedDateTime.now(VN_ZONE);
+        ZonedDateTime startOfMonth = now.withDayOfMonth(1).truncatedTo(ChronoUnit.DAYS);
+
+        return switch (code) {
+            case "MONTH" -> new PeriodWindow(
+                    startOfMonth.toInstant(),
+                    startOfMonth.plusMonths(1).toInstant(),
+                    String.format("Tháng %02d/%d", startOfMonth.getMonthValue(), startOfMonth.getYear())
+            );
+            case "PREV_MONTH" -> {
+                ZonedDateTime prevStart = startOfMonth.minusMonths(1);
+                yield new PeriodWindow(
+                        prevStart.toInstant(),
+                        startOfMonth.toInstant(),
+                        String.format("Tháng %02d/%d", prevStart.getMonthValue(), prevStart.getYear())
+                );
+            }
+            case "QUARTER" -> {
+                int quarter = ((now.getMonthValue() - 1) / 3) + 1;
+                int firstMonth = (quarter - 1) * 3 + 1;
+                ZonedDateTime qStart = now.withMonth(firstMonth).withDayOfMonth(1).truncatedTo(ChronoUnit.DAYS);
+                yield new PeriodWindow(
+                        qStart.toInstant(),
+                        qStart.plusMonths(3).toInstant(),
+                        String.format("Quý %d/%d", quarter, qStart.getYear())
+                );
+            }
+            case "YEAR" -> {
+                ZonedDateTime yStart = now.withMonth(1).withDayOfMonth(1).truncatedTo(ChronoUnit.DAYS);
+                yield new PeriodWindow(
+                        yStart.toInstant(),
+                        yStart.plusYears(1).toInstant(),
+                        String.format("Năm %d", yStart.getYear())
+                );
+            }
+            default -> new PeriodWindow(
+                    Instant.EPOCH,
+                    now.plusDays(1).toInstant(),
+                    "Toàn thời gian"
+            );
+        };
     }
 
     public GovernmentReportDto generateReport(String period) {
-        String cleanPeriod = (period != null && !period.isBlank()) ? period.toUpperCase() : "THÁNG_HIỆN_TẠI";
+        PeriodWindow window = resolvePeriodWindow(period);
+        Instant now = Instant.now();
 
         // 1. Quy hoạch tổng thể đề án 1.584 Nhà văn hóa TP Hải Phòng
         int targetTotalLocations = 1584;
@@ -97,47 +173,49 @@ public class GovernmentReportService {
         }
         int deployedCount = deployedLocations.size();
         int activeLocations = (int) deployedLocations.stream().filter(WifiLocation::isActive).count();
-        if (activeLocations == 0 && locationRepository.countByActiveTrueAndDeletedFalse() > 0) {
-            activeLocations = (int) locationRepository.countByActiveTrueAndDeletedFalse();
+        if (deployedCount == 0 && activeLocations == 0) {
+            long totalFromCount = locationRepository.countByDeletedFalse();
+            long activeFromCount = locationRepository.countByActiveTrueAndDeletedFalse();
+            deployedCount = (int) totalFromCount;
+            activeLocations = (int) activeFromCount;
         }
 
-        // Tỷ lệ khả dụng: tính theo số điểm đã phát sóng thực tế
         double availabilityRate = deployedCount > 0
                 ? ((double) activeLocations / deployedCount) * 100.0
-                : 99.5;
+                : 0.0;
 
-        // 3. Số lượt truy cập & dung lượng thực tế từ guest_sessions
-        long totalSessions = sessionRepository.count();
-        Long totalBytesSum = sessionRepository.sumTotalBytes();
+        // 3. Số lượt truy cập & dung lượng thực tế trong kỳ báo cáo từ guest_sessions
+        long totalSessions = sessionRepository.countByCreatedAtGreaterThanEqualAndCreatedAtLessThan(window.start(), window.end());
+        Long totalBytesSum = sessionRepository.sumTotalBytesBetween(window.start(), window.end());
         long totalBytes = totalBytesSum != null ? totalBytesSum : 0L;
-        // Chuyển sang Terabytes (hoặc Gigabytes nếu dưới 1 TB)
-        double dataServedTb = Math.round((totalBytes / (1024.0 * 1024.0 * 1024.0 * 1024.0)) * 1000.0) / 1000.0;
-        if (dataServedTb == 0.0 && totalBytes > 0) {
-            dataServedTb = Math.round((totalBytes / (1024.0 * 1024.0 * 1024.0 * 1024.0)) * 10000.0) / 10000.0;
-        }
+        double dataServedTb = totalBytes / (1024.0 * 1024.0 * 1024.0 * 1024.0);
 
-        // 4. Mức độ hài lòng: khảo sát thực tế từ survey_responses
-        double satisfactionRate = 97.4;
-        if (surveyResponseRepository != null) {
-            long totalResponses = surveyResponseRepository.count();
-            if (totalResponses > 0) {
-                satisfactionRate = 96.5; // Dựa trên 41 phản hồi ý kiến nhân dân thực tế
-            }
-        }
+        // 4. Mức độ hài lòng: tính trực tiếp từ survey_responses trong kỳ
+        double satisfactionRate = computeRealSatisfactionRate(window.start(), window.end());
 
-        // 5. Sự cố kỹ thuật & SLA
-        int totalIncidents = (int) incidentRepository.count();
-        long breachedCount = incidentRepository.countByStatus("BREACHED");
+        // 5. Sự cố kỹ thuật, SLA & MTTR thực tế từ incident_tickets trong kỳ
+        List<IncidentTicket> periodIncidents = incidentRepository.findByCreatedAtGreaterThanEqualAndCreatedAtLessThan(window.start(), window.end());
+        if (periodIncidents == null) {
+            periodIncidents = Collections.emptyList();
+        }
+        int totalIncidents = periodIncidents.size();
+        long breachedCount = periodIncidents.stream().filter(t -> isIncidentBreached(t, now)).count();
         double slaCompliance = totalIncidents > 0
                 ? ((double) (totalIncidents - breachedCount) / totalIncidents) * 100.0
-                : 100.0;
-        double avgMttrHours = totalIncidents > 0 ? 1.8 : 0.0;
+                : (deployedCount > 0 ? 100.0 : 0.0);
 
-        // 6. Thống kê phiên và dung lượng theo từng Location ID
+        double avgMttrHours = periodIncidents.stream()
+                .filter(t -> t.getResolvedAt() != null && t.getCreatedAt() != null && !t.getResolvedAt().isBefore(t.getCreatedAt()))
+                .mapToDouble(t -> Duration.between(t.getCreatedAt(), t.getResolvedAt()).toMinutes() / 60.0)
+                .average()
+                .orElse(0.0);
+        avgMttrHours = Math.round(avgMttrHours * 10.0) / 10.0;
+
+        // 6. Thống kê phiên và dung lượng theo từng Location ID trong kỳ
         Map<Long, Long> locationSessionsMap = new HashMap<>();
         Map<Long, Long> locationBytesMap = new HashMap<>();
         try {
-            List<Object[]> sessionStats = sessionRepository.sumSessionStatsGroupByLocation();
+            List<Object[]> sessionStats = sessionRepository.sumSessionStatsGroupByLocationBetween(window.start(), window.end());
             if (sessionStats != null) {
                 for (Object[] row : sessionStats) {
                     if (row != null && row.length >= 3 && row[0] != null) {
@@ -151,27 +229,24 @@ public class GovernmentReportService {
             }
         } catch (Exception ignored) {}
 
-        // Thống kê sự cố theo Location ID
+        // Thống kê sự cố & vi phạm SLA theo Location ID trong kỳ
         Map<Long, Integer> locationIncidentsMap = new HashMap<>();
-        try {
-            List<Object[]> incidentStats = incidentRepository.countIncidentsGroupByLocation();
-            if (incidentStats != null) {
-                for (Object[] row : incidentStats) {
-                    if (row != null && row.length >= 2 && row[0] != null) {
-                        Long locId = ((Number) row[0]).longValue();
-                        Integer count = row[1] != null ? ((Number) row[1]).intValue() : 0;
-                        locationIncidentsMap.put(locId, count);
-                    }
+        Map<Long, Integer> locationBreachedMap = new HashMap<>();
+        for (IncidentTicket t : periodIncidents) {
+            if (t.getLocationId() != null) {
+                locationIncidentsMap.merge(t.getLocationId(), 1, Integer::sum);
+                if (isIncidentBreached(t, now)) {
+                    locationBreachedMap.merge(t.getLocationId(), 1, Integer::sum);
                 }
             }
-        } catch (Exception ignored) {}
+        }
 
         // 7. Lấy danh sách 15 Quận / Huyện cấp 2 của TP. Hải Phòng
         List<AdministrativeUnit> districts = adminUnitRepository.findByLevelOrderByCodeAsc(2);
         List<DistrictStatDto> districtStats = new ArrayList<>();
 
         if (districts.isEmpty()) {
-            districtStats.add(new DistrictStatDto(1L, "Toàn Thành Phố", targetTotalLocations, activeLocations, availabilityRate, totalSessions, totalBytes / (1024.0 * 1024.0 * 1024.0), totalIncidents, slaCompliance));
+            districtStats.add(new DistrictStatDto(1L, "Toàn Thành Phố", targetTotalLocations, activeLocations, Math.round(availabilityRate * 10.0) / 10.0, totalSessions, Math.round((totalBytes / (1024.0 * 1024.0 * 1024.0)) * 100.0) / 100.0, totalIncidents, Math.round(slaCompliance * 10.0) / 10.0));
         } else {
             for (AdministrativeUnit d : districts) {
                 int plannedNvh = (d != null && d.getCode() != null)
@@ -179,39 +254,42 @@ public class GovernmentReportService {
                         : 105;
 
                 // Lọc các điểm thuộc quận/huyện này
-                List<WifiLocation> districtLocs = (deployedLocations != null)
-                        ? deployedLocations.stream()
+                List<WifiLocation> districtLocs = deployedLocations.stream()
                         .filter(loc -> {
                             if (loc.getAdminUnit() == null) return false;
-                            if (loc.getAdminUnit().getLevel() == 2) {
+                            Integer unitLevel = loc.getAdminUnit().getLevel();
+                            if (Integer.valueOf(2).equals(unitLevel)) {
                                 return Objects.equals(loc.getAdminUnit().getId(), d.getId());
                             }
-                            if (loc.getAdminUnit().getLevel() == 3 && loc.getAdminUnit().getParent() != null) {
+                            if (Integer.valueOf(3).equals(unitLevel) && loc.getAdminUnit().getParent() != null) {
                                 return Objects.equals(loc.getAdminUnit().getParent().getId(), d.getId());
                             }
                             return false;
                         })
-                        .toList()
-                        : Collections.emptyList();
+                        .toList();
 
                 int distDeployed = districtLocs.size();
                 int distOnline = (int) districtLocs.stream().filter(WifiLocation::isActive).count();
                 double distAvailability = distDeployed > 0
                         ? ((double) distOnline / distDeployed) * 100.0
-                        : 100.0;
+                        : 0.0;
 
                 long distSessions = 0L;
                 long distBytes = 0L;
                 int distIncidents = 0;
+                int distBreached = 0;
 
                 for (WifiLocation loc : districtLocs) {
                     distSessions += locationSessionsMap.getOrDefault(loc.getId(), 0L);
                     distBytes += locationBytesMap.getOrDefault(loc.getId(), 0L);
                     distIncidents += locationIncidentsMap.getOrDefault(loc.getId(), 0);
+                    distBreached += locationBreachedMap.getOrDefault(loc.getId(), 0);
                 }
 
                 double distDataGb = Math.round((distBytes / (1024.0 * 1024.0 * 1024.0)) * 100.0) / 100.0;
-                double distSla = 100.0;
+                double distSla = distIncidents > 0
+                        ? ((double) (distIncidents - distBreached) / distIncidents) * 100.0
+                        : (distDeployed > 0 ? 100.0 : 0.0);
 
                 districtStats.add(new DistrictStatDto(
                         d.getId(),
@@ -222,15 +300,15 @@ public class GovernmentReportService {
                         distSessions,
                         distDataGb,
                         distIncidents,
-                        distSla
+                        Math.round(distSla * 10.0) / 10.0
                 ));
             }
         }
 
         return new GovernmentReportDto(
-                cleanPeriod,
+                window.label(),
                 "ỦY BAN NHÂN DÂN THÀNH PHỐ HẢI PHÒNG",
-                "SỞ THÔNG TIN VÀ TRUYỀN THÔNG HẢI PHÒNG",
+                "SỞ KHOA HỌC VÀ CÔNG NGHỆ HẢI PHÒNG",
                 Instant.now(),
                 targetTotalLocations,
                 activeLocations,
@@ -245,6 +323,62 @@ public class GovernmentReportService {
         );
     }
 
+    private boolean isIncidentBreached(IncidentTicket ticket, Instant now) {
+        if (ticket == null) return false;
+        if ("BREACHED".equalsIgnoreCase(ticket.getStatus())) return true;
+        if (ticket.getSlaDeadline() == null) return false;
+        if (ticket.getResolvedAt() != null) {
+            return ticket.getResolvedAt().isAfter(ticket.getSlaDeadline());
+        }
+        String st = ticket.getStatus();
+        boolean stillOpen = !"RESOLVED".equalsIgnoreCase(st) && !"CLOSED".equalsIgnoreCase(st);
+        return stillOpen && now.isAfter(ticket.getSlaDeadline());
+    }
+
+    private double computeRealSatisfactionRate(Instant start, Instant end) {
+        if (surveyResponseRepository == null) return 0.0;
+        List<SurveyResponse> responses = surveyResponseRepository.findBySubmittedAtGreaterThanEqualAndSubmittedAtLessThan(start, end);
+        if (responses == null || responses.isEmpty()) return 0.0;
+
+        Map<String, String> questionTypes = new HashMap<>();
+        if (surveyQuestionRepository != null) {
+            for (SurveyQuestion q : surveyQuestionRepository.findAll()) {
+                if (q.getId() != null && q.getQuestionType() != null) {
+                    questionTypes.put(q.getId().toString(), q.getQuestionType().toUpperCase());
+                }
+            }
+        }
+
+        long totalRated = 0;
+        long satisfiedCount = 0;
+
+        for (SurveyResponse resp : responses) {
+            if (resp.getAnswersJson() == null || resp.getAnswersJson().isBlank()) continue;
+            try {
+                Map<String, Object> ansMap = objectMapper.readValue(resp.getAnswersJson(), new TypeReference<Map<String, Object>>() {});
+                for (Map.Entry<String, Object> entry : ansMap.entrySet()) {
+                    if (entry.getValue() == null) continue;
+                    String qType = questionTypes.getOrDefault(entry.getKey(), "");
+                    boolean isRatingType = "RATING".equals(qType) || (qType.isEmpty() && entry.getValue() instanceof Number);
+                    if (isRatingType) {
+                        try {
+                            int star = Integer.parseInt(entry.getValue().toString().trim());
+                            if (star >= 1 && star <= 5) {
+                                totalRated++;
+                                if (star >= 4) satisfiedCount++;
+                            }
+                        } catch (NumberFormatException ignored) {}
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        if (totalRated == 0) {
+            return 0.0;
+        }
+        return Math.round(((satisfiedCount * 100.0) / totalRated) * 10.0) / 10.0;
+    }
+
     public List<GovernmentReportHistoryDto> getReportHistory() {
         return historyRepository.findAllByOrderBySubmittedAtDesc()
                 .stream()
@@ -255,14 +389,7 @@ public class GovernmentReportService {
     @Transactional
     public GovernmentReportHistoryDto submitReport(SubmitReportRequest req, String username) {
         GovernmentReportDto current = generateReport(req.getPeriod());
-
-        String periodLabel = switch (req.getPeriod().toUpperCase()) {
-            case "MONTH" -> "Tháng " + (Instant.now().atZone(java.time.ZoneId.of("Asia/Ho_Chi_Minh")).getMonthValue()) + "/2026";
-            case "PREV_MONTH" -> "Tháng trước";
-            case "QUARTER" -> "Quý 3/2026";
-            case "YEAR" -> "Năm 2026";
-            default -> req.getPeriod();
-        };
+        String periodLabel = current.reportPeriod();
 
         String reportCode = "BC-HP-" + System.currentTimeMillis() % 1000000;
         String title = "Báo cáo vận hành Wi-Fi 1.584 Nhà văn hóa (" + periodLabel + ")";
@@ -278,7 +405,7 @@ public class GovernmentReportService {
         entity.setTotalDataGb(current.totalDataServedTb() * 1024.0);
         entity.setExportFormat(req.getExportFormat() != null ? req.getExportFormat().toUpperCase() : "PDF");
         entity.setStatus("SUBMITTED");
-        entity.setSubmittedBy(username != null ? username : "sotttt@haiphong.gov.vn");
+        entity.setSubmittedBy(username != null ? username : "skhcn@haiphong.gov.vn");
         entity.setSubmittedAt(Instant.now());
         entity.setRecipientAgency(req.getRecipientAgency() != null && !req.getRecipientAgency().isBlank()
                 ? req.getRecipientAgency()

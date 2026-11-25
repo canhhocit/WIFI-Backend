@@ -46,7 +46,10 @@ public class IncidentTicketDto {
         dto.setTitle(t.getTitle());
         dto.setDescription(t.getDescription());
         dto.setAssignedTo(t.getAssignedTo());
-        dto.setAssignedGroup(t.getAssignedTo() != null ? "Đội Kỹ thuật Viễn thông Hải Phòng" : null);
+        String group = (t.getAssignedGroup() != null && !t.getAssignedGroup().isBlank())
+                ? t.getAssignedGroup()
+                : (t.getAssignedTo() != null ? "Cán bộ được phân công" : null);
+        dto.setAssignedGroup(group);
         dto.setSlaDeadline(t.getSlaDeadline());
         dto.setResolvedAt(t.getResolvedAt());
         dto.setResolutionNotes(t.getResolutionNotes());

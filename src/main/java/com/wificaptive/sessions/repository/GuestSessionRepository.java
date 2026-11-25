@@ -94,4 +94,12 @@ public interface GuestSessionRepository extends JpaRepository<GuestSession, Long
 
     @Query("SELECT s.location.id, COUNT(s), COALESCE(SUM(s.bytesDownloaded + s.bytesUploaded), 0) FROM GuestSession s WHERE s.location.id IS NOT NULL GROUP BY s.location.id")
     List<Object[]> sumSessionStatsGroupByLocation();
+
+    long countByCreatedAtGreaterThanEqualAndCreatedAtLessThan(Instant start, Instant end);
+
+    @Query("SELECT COALESCE(SUM(s.bytesDownloaded + s.bytesUploaded), 0) FROM GuestSession s WHERE s.createdAt >= :start AND s.createdAt < :end")
+    Long sumTotalBytesBetween(@Param("start") Instant start, @Param("end") Instant end);
+
+    @Query("SELECT s.location.id, COUNT(s), COALESCE(SUM(s.bytesDownloaded + s.bytesUploaded), 0) FROM GuestSession s WHERE s.location.id IS NOT NULL AND s.createdAt >= :start AND s.createdAt < :end GROUP BY s.location.id")
+    List<Object[]> sumSessionStatsGroupByLocationBetween(@Param("start") Instant start, @Param("end") Instant end);
 }

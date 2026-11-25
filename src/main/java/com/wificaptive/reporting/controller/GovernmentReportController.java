@@ -62,7 +62,7 @@ public class GovernmentReportController {
         byte[] csvBytes = ("\uFEFF" + csv).getBytes(StandardCharsets.UTF_8);
 
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"Bao_cao_UBND_So_TTTT_Hai_Phong.csv\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"Bao_cao_UBND_So_KHCN_Hai_Phong.csv\"")
                 .contentType(MediaType.parseMediaType("text/csv; charset=UTF-8"))
                 .body(csvBytes);
     }

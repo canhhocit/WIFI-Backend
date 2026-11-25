@@ -43,6 +43,11 @@ public class IncidentController {
         return ApiResponse.ok("Tạo phiếu báo sự cố thành công", ticketService.createTicket(req, actor));
     }
 
+    @GetMapping("/assignees")
+    public ApiResponse<java.util.List<IncidentAssigneeDto>> getAssignees() {
+        return ApiResponse.ok(ticketService.getAvailableAssignees());
+    }
+
     @RequestMapping(value = "/{id}/assign", method = {RequestMethod.POST, RequestMethod.PUT})
     @PreAuthorize("@rbac.hasPermission('INCIDENTS', 'EDIT') or @rbac.hasPermission('INCIDENTS', 'APPROVE')")
     public ApiResponse<IncidentTicketDto> assignTicket(
@@ -50,7 +55,7 @@ public class IncidentController {
             @Valid @RequestBody AssignIncidentRequest req,
             Authentication auth) {
         String actor = auth != null ? auth.getName() : "dispatcher";
-        return ApiResponse.ok("Phân công kỹ thuật viên thành công", ticketService.assignTicket(id, req, actor));
+        return ApiResponse.ok("Phân công xử lý sự cố thành công", ticketService.assignTicket(id, req, actor));
     }
 
     @RequestMapping(value = "/{id}/resolve", method = {RequestMethod.POST, RequestMethod.PUT})

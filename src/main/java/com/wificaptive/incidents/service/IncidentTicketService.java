@@ -46,6 +46,12 @@ public class IncidentTicketService {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.wificaptive.geography.service.AdminScopeService adminScopeService;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.wificaptive.authentication.repository.AdminUserRepository adminUserRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.wificaptive.geography.repository.AdministrativeUnitRepository administrativeUnitRepository;
+
     public IncidentTicketService(
             IncidentTicketRepository ticketRepository,
             IncidentUpdateRepository updateRepository,
@@ -137,6 +143,9 @@ public class IncidentTicketService {
         t.setTitle(req.getTitle().trim());
         t.setDescription(req.getDescription());
         t.setAssignedTo(req.getAssignedTo());
+        if (StringUtils.hasText(req.getAssignedGroup())) {
+            t.setAssignedGroup(req.getAssignedGroup().trim());
+        }
         t.setSlaDeadline(deadline);
 
         IncidentTicket saved = ticketRepository.save(t);
@@ -166,12 +175,68 @@ public class IncidentTicketService {
         return IncidentTicketDto.from(saved, locName, Collections.emptyList());
     }
 
+    @Transactional(readOnly = true)
+    public List<IncidentAssigneeDto> getAvailableAssignees() {
+        if (adminUserRepository == null) {
+            return Collections.emptyList();
+        }
+        Map<Long, String> unitNames = administrativeUnitRepository != null
+                ? administrativeUnitRepository.findAll().stream()
+                    .collect(Collectors.toMap(u -> u.getId(), u -> u.getName(), (a, b) -> a))
+                : Collections.emptyMap();
+
+        return adminUserRepository.findAll().stream()
+                .filter(com.wificaptive.authentication.entity.AdminUser::isEnabled)
+                .sorted((a, b) -> Integer.compare(rolePriority(a.getRole()), rolePriority(b.getRole())))
+                .map(u -> {
+                    String roleName = u.getRole() != null ? u.getRole().name() : "ROLE_ADMIN";
+                    String roleLabel = switch (roleName) {
+                        case "ROLE_SOTTTT_ADMIN" -> "Cán bộ Sở KH&CN";
+                        case "ROLE_COMMUNE_OFFICER" -> "Cán bộ UBND Xã/Phường";
+                        case "ROLE_SUPER_ADMIN", "ROLE_ADMIN" -> "Quản trị hệ thống";
+                        default -> "Cán bộ quản lý";
+                    };
+                    String unitGroup = switch (roleName) {
+                        case "ROLE_SOTTTT_ADMIN" -> "Sở Khoa học và Công nghệ TP. Hải Phòng";
+                        case "ROLE_COMMUNE_OFFICER" -> u.getAdminUnitId() != null && unitNames.containsKey(u.getAdminUnitId())
+                                ? "UBND " + unitNames.get(u.getAdminUnitId())
+                                : "UBND Xã / Phường";
+                        case "ROLE_SUPER_ADMIN", "ROLE_ADMIN" -> "Trung tâm Điều hành Hệ thống";
+                        default -> "Đơn vị quản lý";
+                    };
+                    return new IncidentAssigneeDto(u.getId(), u.getUsername(), u.getFullName(), roleName, roleLabel, unitGroup);
+                })
+                .collect(Collectors.toList());
+    }
+
+    private static int rolePriority(com.wificaptive.authentication.entity.AdminRole role) {
+        if (role == null) return 99;
+        return switch (role) {
+            case ROLE_SOTTTT_ADMIN -> 1;
+            case ROLE_COMMUNE_OFFICER -> 2;
+            case ROLE_SUPER_ADMIN, ROLE_ADMIN -> 3;
+            default -> 4;
+        };
+    }
+
+    private IncidentTicketDto buildDetailedDto(IncidentTicket saved) {
+        String locName = saved.getLocationId() != null
+                ? locationRepository.findById(saved.getLocationId()).map(WifiLocation::getName).orElse("Điểm #" + saved.getLocationId())
+                : "Chưa gán điểm";
+        List<IncidentUpdateDto> updates = updateRepository.findByTicketIdOrderByCreatedAtAsc(saved.getId())
+                .stream().map(IncidentUpdateDto::from).collect(Collectors.toList());
+        return IncidentTicketDto.from(saved, locName, updates);
+    }
+
     @Transactional
     public IncidentTicketDto assignTicket(Long id, AssignIncidentRequest req, String actor) {
         IncidentTicket t = ticketRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("IncidentTicket not found with id: " + id));
 
         t.setAssignedTo(req.getAssignedTo().trim());
+        if (StringUtils.hasText(req.getAssignedGroup())) {
+            t.setAssignedGroup(req.getAssignedGroup().trim());
+        }
         t.setStatus("ASSIGNED");
         if (req.getAdditionalHours() != null && req.getAdditionalHours() > 0) {
             t.setSlaDeadline(t.getSlaDeadline().plus(req.getAdditionalHours(), ChronoUnit.HOURS));
@@ -179,15 +244,16 @@ public class IncidentTicketService {
 
         IncidentTicket saved = ticketRepository.save(t);
 
+        String groupSuffix = StringUtils.hasText(saved.getAssignedGroup()) ? " (" + saved.getAssignedGroup() + ")" : "";
         updateRepository.save(new IncidentUpdate(
                 saved.getId(),
                 actor != null ? actor : "dispatcher",
                 "ASSIGN",
-                "Phân công xử lý cho " + req.getAssignedTo() + (req.getNotes() != null ? ": " + req.getNotes() : "")
+                "Phân công xử lý cho " + saved.getAssignedTo() + groupSuffix + (StringUtils.hasText(req.getNotes()) ? ": " + req.getNotes() : "")
         ));
 
-        log.info("Ticket {} assigned to {}", saved.getTicketCode(), req.getAssignedTo());
-        return IncidentTicketDto.from(saved);
+        log.info("Ticket {} assigned to {}", saved.getTicketCode(), saved.getAssignedTo());
+        return buildDetailedDto(saved);
     }
 
     @Transactional
@@ -203,13 +269,13 @@ public class IncidentTicketService {
 
         updateRepository.save(new IncidentUpdate(
                 saved.getId(),
-                actor != null ? actor : "technician",
+                actor != null ? actor : "dispatcher",
                 "RESOLVE",
                 "Khắc phục sự cố: " + req.getResolutionNotes()
         ));
 
         log.info("Ticket {} marked as RESOLVED by {}", saved.getTicketCode(), actor);
-        return IncidentTicketDto.from(saved);
+        return buildDetailedDto(saved);
     }
 
     @Transactional

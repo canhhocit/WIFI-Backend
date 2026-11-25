@@ -38,6 +38,9 @@ public class IncidentTicket {
     @Column(name = "assigned_to", length = 100)
     private String assignedTo;
 
+    @Column(name = "assigned_group", length = 150)
+    private String assignedGroup;
+
     @Column(name = "sla_deadline", nullable = false)
     private Instant slaDeadline;
 
@@ -95,6 +98,9 @@ public class IncidentTicket {
 
     public String getAssignedTo() { return assignedTo; }
     public void setAssignedTo(String assignedTo) { this.assignedTo = assignedTo; }
+
+    public String getAssignedGroup() { return assignedGroup; }
+    public void setAssignedGroup(String assignedGroup) { this.assignedGroup = assignedGroup; }
 
     public Instant getSlaDeadline() { return slaDeadline; }
     public void setSlaDeadline(Instant slaDeadline) { this.slaDeadline = slaDeadline; }
