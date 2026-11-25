@@ -77,9 +77,16 @@ public class MeshGwnStatusScheduler {
 
     /** Chạy ngay một lượt cập nhật on/off từ GWN Cloud (dùng cho nút "làm mới" trên giao diện admin). */
     public int refreshNow() {
-        // Trạng thái link cổng LAN của router GWN — tín hiệu NHANH & CHẮC (rút dây là cổng down ngay,
-        // không chờ GWN quên client như client/info). Lấy 1 lần dùng cho mọi mesh của cùng router.
-        GwnRouterPorts ports = gwnCloud.fetchRouterPorts();
+        // Gom router theo locationId để đọc đúng GWN của từng điểm, tránh điểm chưa gắn router bị lấy nhầm .env.
+        Map<Long, NetworkDevice> routerByLocation = new HashMap<>();
+        for (NetworkDevice r : deviceRepository.findRouters()) {
+            if (r.getLocationId() != null) {
+                routerByLocation.putIfAbsent(r.getLocationId(), r);
+            }
+        }
+
+        // Cache trạng thái cổng LAN của từng router trong 1 lượt quét (tránh gọi trùng API Cloud).
+        Map<String, GwnRouterPorts> portsCache = new HashMap<>();
         int online = 0, offline = 0, skipped = 0;
         for (NetworkDevice d : deviceRepository.findAccessPoints()) {
             if (!MeshApMonitorService.isMeshAp(d)) continue;
@@ -88,6 +95,24 @@ public class MeshGwnStatusScheduler {
             String mac = d.getMacAddress();
             if (!StringUtils.hasText(mac)) continue;
             try {
+                Long locId = d.getLocationId();
+                NetworkDevice siteRouter = locId != null ? routerByLocation.get(locId) : null;
+                if (locId != null && siteRouter == null) {
+                    // Điểm chưa có Router GWN -> bỏ qua GWN poll để không suy diễn nhầm từ router điểm khác.
+                    skipped++;
+                    continue;
+                }
+                GwnRouterPorts ports;
+                String netIdOverride = siteRouter != null ? siteRouter.getGwnNetworkId() : null;
+                if (siteRouter != null && StringUtils.hasText(siteRouter.getMacAddress())) {
+                    String routerMacHex = normMac(siteRouter.getMacAddress());
+                    String cacheKey = routerMacHex + "|" + (netIdOverride != null ? netIdOverride : "");
+                    ports = portsCache.computeIfAbsent(cacheKey,
+                            k -> gwnCloud.fetchRouterPorts(routerMacHex, netIdOverride));
+                } else {
+                    ports = portsCache.computeIfAbsent("DEFAULT", k -> gwnCloud.fetchRouterPorts());
+                }
+
                 boolean isOnline;
                 String reason;
                 // Ưu tiên cổng khai trên thiết bị (lúc import); env map chỉ là dự phòng/ghi đè cũ.
@@ -105,7 +130,9 @@ public class MeshGwnStatusScheduler {
                                       : "GWN: tất cả cổng LAN down (mesh đã rút/tắt)";
                 } else {
                     // Dự phòng khi device/info không lấy được: dùng client/info (chậm chiều OFF).
-                    GwnClientLiveStatus live = gwnCloud.fetchClientInfoFromCloud(mac);
+                    GwnClientLiveStatus live = StringUtils.hasText(netIdOverride)
+                            ? gwnCloud.fetchClientInfoFromCloud(mac, netIdOverride)
+                            : gwnCloud.fetchClientInfoFromCloud(mac);
                     if (!live.apiReachable()) { skipped++; continue; }
                     isOnline = live.exists();
                     reason = isOnline ? "GWN client/info thấy mesh (dự phòng)" : "GWN client/info không thấy mesh (dự phòng)";

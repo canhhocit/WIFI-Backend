@@ -37,7 +37,8 @@ class MeshGwnStatusSchedulerTest {
         mesh.setVendor("Viettel High Tech");
         mesh.setMacAddress("24:0B:2B:47:2A:22");
         mesh.setStatus("ONLINE");
-        when(repo.findAll()).thenReturn(List.of(mesh));
+        when(repo.findAccessPoints()).thenReturn(List.of(mesh));
+        when(repo.findRouters()).thenReturn(List.of());
 
         // GWN: LAN4 down (mesh này đã rút), LAN5 & LAN6 up (2 mesh khác đang cắm)
         Map<String, Boolean> lan = new LinkedHashMap<>();
@@ -89,5 +90,51 @@ class MeshGwnStatusSchedulerTest {
         assertEquals("4", m.get("240B2B472A22"));
         assertEquals("6", m.get("240B2B46F83A"));
         assertEquals(2, m.size());
+    }
+
+    @Test
+    void skipsMeshAtLocationWithoutRouterInsteadOfUsingDefaultEnvRouter() {
+        com.wificaptive.locations.entity.WifiLocation loc2 = new com.wificaptive.locations.entity.WifiLocation();
+        loc2.setId(2L);
+        mesh.setLocation(loc2);
+        when(repo.findAccessPoints()).thenReturn(List.of(mesh));
+        when(repo.findRouters()).thenReturn(List.of());
+
+        MeshGwnStatusScheduler s = new MeshGwnStatusScheduler(gwn, repo, monitor, "");
+        int updated = s.refreshNow();
+
+        assertEquals(0, updated);
+        verify(gwn, never()).fetchRouterPorts();
+        verify(gwn, never()).fetchRouterPorts(any(), any());
+        verify(monitor, never()).ingestGwnStatus(any(), anyBoolean(), any());
+    }
+
+    @Test
+    void usesSiteRouterPortsForLocationWithAssignedRouter() {
+        com.wificaptive.locations.entity.WifiLocation loc2 = new com.wificaptive.locations.entity.WifiLocation();
+        loc2.setId(2L);
+        mesh.setLocation(loc2);
+        mesh.setGwnLanPort("5");
+
+        NetworkDevice siteRouter = new NetworkDevice();
+        siteRouter.setId(99L);
+        siteRouter.setDeviceType("ROUTER");
+        siteRouter.setMacAddress("AA:BB:CC:DD:EE:FF");
+        siteRouter.setGwnNetworkId("3300");
+        siteRouter.setLocation(loc2);
+
+        Map<String, Boolean> lan = new LinkedHashMap<>();
+        lan.put("5", true);
+        when(repo.findAccessPoints()).thenReturn(List.of(mesh));
+        when(repo.findRouters()).thenReturn(List.of(siteRouter));
+        when(gwn.fetchRouterPorts("AABBCCDDEEFF", "3300")).thenReturn(new GwnRouterPorts(true, lan));
+
+        MeshGwnStatusScheduler s = new MeshGwnStatusScheduler(gwn, repo, monitor, "");
+        int updated = s.refreshNow();
+
+        assertEquals(1, updated);
+        verify(gwn).fetchRouterPorts("AABBCCDDEEFF", "3300");
+        verify(gwn, never()).fetchRouterPorts();
+        verify(monitor).ingestGwnStatus(eq(mesh), eq(true), any());
     }
 }
