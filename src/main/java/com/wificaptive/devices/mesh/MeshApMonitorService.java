@@ -262,6 +262,9 @@ public class MeshApMonitorService {
                     (dev.getModel() != null ? dev.getModel() : "Mesh AP") + " - " + locName,
                     dev.getMacAddress(),
                     "Mesh AP mất kết nối: " + s.message());
+        } else if ("ONLINE".equals(dev.getStatus()) && "OFFLINE".equalsIgnoreCase(oldStatus)) {
+            incidentTicketService.resolveDeviceRecoveredIncidents(dev.getId(),
+                    "Mesh AP đã đọc được trực tiếp trở lại (ONLINE) — tự động đóng phiếu.");
         }
     }
 
@@ -297,6 +300,9 @@ public class MeshApMonitorService {
                     (dev.getModel() != null ? dev.getModel() : "Mesh AP") + " - " + locName,
                     dev.getMacAddress(),
                     "Mesh AP không còn thấy trên Grandstream GWN Cloud: " + message);
+        } else if ("ONLINE".equals(dev.getStatus()) && "OFFLINE".equalsIgnoreCase(oldStatus)) {
+            incidentTicketService.resolveDeviceRecoveredIncidents(dev.getId(),
+                    "Mesh AP đã xuất hiện trở lại trên Grandstream GWN Cloud (ONLINE) — tự động đóng phiếu.");
         }
     }
 

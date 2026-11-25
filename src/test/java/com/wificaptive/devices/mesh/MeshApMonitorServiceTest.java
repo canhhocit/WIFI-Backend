@@ -169,6 +169,18 @@ class MeshApMonitorServiceTest {
     }
 
     @Test
+    void gwnOnlineAfterOfflineAutoResolvesIncident() {
+        MeshApMonitorService svc = siteWithoutDirect();
+
+        device.setStatus("OFFLINE");
+        svc.ingestGwnStatus(device, true, "thấy lại");
+
+        assertEquals("ONLINE", device.getStatus());
+        verify(incidents).resolveDeviceRecoveredIncidents(eq(7L), anyString());
+        verify(incidents, never()).recordDeviceFailureIncident(any(), any(), anyString(), anyString(), anyString());
+    }
+
+    @Test
     void agentDataWinsOverGwnStatus() {
         MeshApMonitorService svc = siteWithoutDirect();
         svc.ingestFromAgent(device, live());           // agent báo LIVE -> ONLINE

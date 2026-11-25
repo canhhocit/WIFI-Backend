@@ -388,6 +388,14 @@ public class NetworkDeviceService {
         newDev.setMacAddress(cleanNewMac);
         newDev.setModel(request.getNewModel() != null ? request.getNewModel() : (oldDevice != null ? oldDevice.getModel() : "Default"));
         newDev.setVendor(request.getNewVendor() != null ? request.getNewVendor() : (oldDevice != null ? oldDevice.getVendor() : "Default"));
+        // Thay mesh cùng ổ LAN: kế thừa CỔNG GWN (và IP tĩnh) của máy cũ -> giám sát on/off liền mạch,
+        // "AP cổng LANx" tự chuyển sang mesh mới mà không phải cấu hình lại.
+        if (oldDevice != null) {
+            newDev.setGwnLanPort(oldDevice.getGwnLanPort());
+            if (!org.springframework.util.StringUtils.hasText(newDev.getIpAddress())) {
+                newDev.setIpAddress(oldDevice.getIpAddress());
+            }
+        }
         newDev.setStatus("ONLINE");
         newDev.setInstalledAt(Instant.now());
         newDev.setLastSeenAt(Instant.now());
