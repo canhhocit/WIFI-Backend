@@ -58,8 +58,8 @@ public class LocationDto {
         dto.setWelcomeMessage(loc.getWelcomeMessage());
         dto.setPromoTitle(loc.getPromoTitle());
         dto.setPromoContent(loc.getPromoContent());
-        dto.setPromoBannerUrl(loc.getPromoBannerUrl());
-        dto.setBackgroundImageUrl(loc.getBackgroundImageUrl());
+        dto.setPromoBannerUrl(com.wificaptive.campaigns.dto.CampaignDto.normalizeSameOriginMediaUrl(loc.getPromoBannerUrl()));
+        dto.setBackgroundImageUrl(com.wificaptive.campaigns.dto.CampaignDto.normalizeSameOriginMediaUrl(loc.getBackgroundImageUrl()));
         dto.setPromoActionUrl(loc.getPromoActionUrl());
         if (loc.getAdminUnit() != null) {
             dto.setAdminUnitId(loc.getAdminUnit().getId());

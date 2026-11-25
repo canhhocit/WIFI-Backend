@@ -17,9 +17,24 @@ import org.springframework.web.bind.annotation.*;
 public class CampaignController {
 
     private final CampaignService campaignService;
+    private final com.wificaptive.portal.service.PortalService portalService;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public CampaignController(
+            CampaignService campaignService,
+            @org.springframework.beans.factory.annotation.Autowired(required = false) com.wificaptive.portal.service.PortalService portalService) {
+        this.campaignService = campaignService;
+        this.portalService = portalService;
+    }
 
     public CampaignController(CampaignService campaignService) {
-        this.campaignService = campaignService;
+        this(campaignService, null);
+    }
+
+    private void invalidatePortalCache() {
+        if (portalService != null) {
+            portalService.invalidatePortalCache();
+        }
     }
 
     @GetMapping
@@ -41,7 +56,9 @@ public class CampaignController {
             @Valid @RequestBody CreateCampaignRequest req,
             Authentication auth) {
         String username = auth != null ? auth.getName() : "admin";
-        return ApiResponse.ok("Tạo chiến dịch mới thành công", campaignService.createCampaign(req, username));
+        CampaignDto dto = campaignService.createCampaign(req, username);
+        invalidatePortalCache();
+        return ApiResponse.ok("Tạo chiến dịch mới thành công", dto);
     }
 
     @PostMapping("/{id}/submit")
@@ -50,7 +67,9 @@ public class CampaignController {
             @PathVariable Long id,
             Authentication auth) {
         String username = auth != null ? auth.getName() : "admin";
-        return ApiResponse.ok("Đã gửi phê duyệt chiến dịch", campaignService.submitForApproval(id, username));
+        CampaignDto dto = campaignService.submitForApproval(id, username);
+        invalidatePortalCache();
+        return ApiResponse.ok("Đã gửi phê duyệt chiến dịch", dto);
     }
 
     @PostMapping("/{id}/approve")
@@ -60,7 +79,9 @@ public class CampaignController {
             @RequestBody(required = false) ApproveCampaignRequest req,
             Authentication auth) {
         String username = auth != null ? auth.getName() : "approver";
-        return ApiResponse.ok("Phê duyệt chiến dịch thành công", campaignService.approveCampaign(id, req, username));
+        CampaignDto dto = campaignService.approveCampaign(id, req, username);
+        invalidatePortalCache();
+        return ApiResponse.ok("Phê duyệt chiến dịch thành công", dto);
     }
 
     @PostMapping("/{id}/reject")
@@ -70,7 +91,9 @@ public class CampaignController {
             @RequestBody(required = false) ApproveCampaignRequest req,
             Authentication auth) {
         String username = auth != null ? auth.getName() : "reviewer";
-        return ApiResponse.ok("Đã từ chối chiến dịch", campaignService.rejectCampaign(id, req, username));
+        CampaignDto dto = campaignService.rejectCampaign(id, req, username);
+        invalidatePortalCache();
+        return ApiResponse.ok("Đã từ chối chiến dịch", dto);
     }
 
     @PutMapping("/{id}")
@@ -80,7 +103,9 @@ public class CampaignController {
             @Valid @RequestBody CreateCampaignRequest req,
             Authentication auth) {
         String username = auth != null ? auth.getName() : "editor";
-        return ApiResponse.ok("Cập nhật chiến dịch thành công", campaignService.updateCampaign(id, req, username));
+        CampaignDto dto = campaignService.updateCampaign(id, req, username);
+        invalidatePortalCache();
+        return ApiResponse.ok("Cập nhật chiến dịch thành công", dto);
     }
 
     @DeleteMapping("/{id}")
@@ -90,6 +115,7 @@ public class CampaignController {
             Authentication auth) {
         String username = auth != null ? auth.getName() : "admin";
         campaignService.deleteCampaign(id, username);
+        invalidatePortalCache();
         return ApiResponse.ok("Đã xóa chiến dịch thành công", null);
     }
 }

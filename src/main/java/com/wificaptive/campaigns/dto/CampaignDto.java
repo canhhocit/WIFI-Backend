@@ -26,13 +26,31 @@ public class CampaignDto {
     private Instant createdAt;
     private Instant updatedAt;
 
+    public static String normalizeSameOriginMediaUrl(String url) {
+        if (url == null || url.isBlank()) return url;
+        String trimmed = url.trim();
+        // Rewrite external MinIO bucket URLs to same-origin /uploads/... so Captive Portal Walled Garden allows them
+        int bucketIdx = trimmed.indexOf("/wifi-haiphong/");
+        if (bucketIdx >= 0 && (trimmed.startsWith("http://") || trimmed.startsWith("https://"))) {
+            String rel = trimmed.substring(bucketIdx + "/wifi-haiphong/".length());
+            if (!rel.isEmpty()) {
+                return "/uploads/" + rel;
+            }
+        }
+        int uploadsIdx = trimmed.indexOf("/uploads/");
+        if (uploadsIdx > 0 && (trimmed.startsWith("http://localhost") || trimmed.startsWith("http://127.0.0.1"))) {
+            return trimmed.substring(uploadsIdx);
+        }
+        return trimmed;
+    }
+
     public static CampaignDto from(Campaign c) {
         CampaignDto dto = new CampaignDto();
         dto.setId(c.getId());
         dto.setTitle(c.getTitle());
         dto.setDescription(c.getDescription());
-        dto.setBannerUrl(c.getBannerUrl());
-        dto.setVideoUrl(c.getVideoUrl());
+        dto.setBannerUrl(normalizeSameOriginMediaUrl(c.getBannerUrl()));
+        dto.setVideoUrl(normalizeSameOriginMediaUrl(c.getVideoUrl()));
         dto.setActionUrl(c.getActionUrl());
         dto.setTargetAdminUnitId(c.getTargetAdminUnitId());
         dto.setTargetLocationId(c.getTargetLocationId());
@@ -51,15 +69,22 @@ public class CampaignDto {
         if (c.getGalleryUrls() != null && !c.getGalleryUrls().isBlank()) {
             try {
                 com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-                list = mapper.readValue(c.getGalleryUrls(), new com.fasterxml.jackson.core.type.TypeReference<List<String>>() {});
+                List<String> rawList = mapper.readValue(c.getGalleryUrls(), new com.fasterxml.jackson.core.type.TypeReference<List<String>>() {});
+                if (rawList != null) {
+                    for (String item : rawList) {
+                        if (item != null && !item.isBlank()) {
+                            list.add(normalizeSameOriginMediaUrl(item));
+                        }
+                    }
+                }
             } catch (Exception e) {
                 for (String part : c.getGalleryUrls().split("[,\\n]")) {
-                    if (!part.trim().isEmpty()) list.add(part.trim());
+                    if (!part.trim().isEmpty()) list.add(normalizeSameOriginMediaUrl(part.trim()));
                 }
             }
         }
-        if (list.isEmpty() && c.getBannerUrl() != null && !c.getBannerUrl().isBlank()) {
-            list.add(c.getBannerUrl());
+        if (list.isEmpty() && dto.getBannerUrl() != null && !dto.getBannerUrl().isBlank()) {
+            list.add(dto.getBannerUrl());
         }
         dto.setGalleryUrls(list);
         return dto;

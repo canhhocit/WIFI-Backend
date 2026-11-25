@@ -122,15 +122,9 @@ public class StorageServiceImpl implements StorageService {
             );
         }
 
-        String publicUrl = minioProperties.getPublicUrl();
-        if (!StringUtils.hasText(publicUrl)) {
-            publicUrl = minioProperties.getEndpoint() + "/" + bucket;
-        }
-        if (publicUrl.endsWith("/")) {
-            publicUrl = publicUrl.substring(0, publicUrl.length() - 1);
-        }
-
-        String fileUrl = publicUrl + "/" + objectKey;
+        // Return same-origin relative path (/uploads/...) so Captive Portal guests inside the router's
+        // pre-authentication Walled Garden can load images and stream videos without external domain blocks.
+        String fileUrl = "/uploads/" + objectKey;
         log.info("File successfully uploaded to MinIO: bucket={}, key={}, url={}", bucket, objectKey, fileUrl);
 
         return new UploadResponseDto(

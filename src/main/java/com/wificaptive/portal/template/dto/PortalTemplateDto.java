@@ -27,9 +27,9 @@ public class PortalTemplateDto {
         dto.setTemplateType(t.getTemplateType());
         dto.setThemeColor(t.getThemeColor());
         dto.setBackgroundColor(t.getBackgroundColor());
-        dto.setBackgroundImageUrl(t.getBackgroundImageUrl());
-        dto.setLogoUrl(t.getLogoUrl());
-        dto.setBannerUrl(t.getBannerUrl());
+        dto.setBackgroundImageUrl(com.wificaptive.campaigns.dto.CampaignDto.normalizeSameOriginMediaUrl(t.getBackgroundImageUrl()));
+        dto.setLogoUrl(com.wificaptive.campaigns.dto.CampaignDto.normalizeSameOriginMediaUrl(t.getLogoUrl()));
+        dto.setBannerUrl(com.wificaptive.campaigns.dto.CampaignDto.normalizeSameOriginMediaUrl(t.getBannerUrl()));
         dto.setTitle(t.getTitle());
         dto.setWelcomeText(t.getWelcomeText());
         dto.setButtonText(t.getButtonText());

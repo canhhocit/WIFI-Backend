@@ -32,9 +32,15 @@ public class WebConfig implements WebMvcConfigurer {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.addAllowedOriginPattern("*");
-        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "Accept", "X-Requested-With", "X-Forwarded-For", "User-Agent"));
-        configuration.setExposedHeaders(List.of("Authorization"));
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"));
+        configuration.setAllowedHeaders(Arrays.asList(
+                "Authorization", "Content-Type", "Accept", "X-Requested-With",
+                "X-Forwarded-For", "User-Agent", "Range", "If-Range",
+                "Cache-Control", "Pragma", "Origin"
+        ));
+        configuration.setExposedHeaders(Arrays.asList(
+                "Authorization", "Accept-Ranges", "Content-Range", "Content-Length", "Content-Type"
+        ));
         configuration.setAllowCredentials(true);
         configuration.setMaxAge(3600L);
 
@@ -53,12 +59,6 @@ public class WebConfig implements WebMvcConfigurer {
         } catch (Exception e) {
             log.warn("Could not pre-create upload directory {}: {}", uploadPath, e.getMessage());
         }
-
-        String locationUri = "file:" + uploadPath.toString().replace("\\", "/") + "/";
-        log.info("Registering static resource handler for /uploads/** -> {}", locationUri);
-
-        registry.addResourceHandler("/uploads/**")
-                .addResourceLocations(locationUri)
-                .setCachePeriod(3600);
+        // Note: /uploads/** is served by MediaStreamController with full HTTP 206 Byte-Range and MinIO support
     }
 }

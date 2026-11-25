@@ -178,22 +178,12 @@ public class OtpVerificationService {
             return localCached.remembered;
         }
 
-        if (stringRedisTemplate != null) {
-            Boolean cached = stringRedisTemplate.hasKey("remembered:mac:" + mac);
-            if (Boolean.TRUE.equals(cached)) {
-                localMacCache.put(mac, new CachedMacStatus(true, Instant.now().plus(10, ChronoUnit.MINUTES)));
-                return true;
-            }
-        }
-
+        // Check local PostgreSQL database directly (avoids blocking remote Upstash Redis TLS round-trip on every new iPhone Randomized MAC)
         Optional<RememberedDevice> opt = rememberedDeviceRepository.findByClientMac(mac);
         boolean remembered = opt.filter(rd -> rd.getBypassOtpUntil().isAfter(Instant.now())).isPresent();
-        if (remembered && stringRedisTemplate != null) {
-            stringRedisTemplate.opsForValue().set("remembered:mac:" + mac, "1", 30, TimeUnit.DAYS);
-        }
 
-        // Cache result in local memory (10 minutes for positive, 60s for negative to eliminate DB hammering)
-        Instant localTtl = remembered ? Instant.now().plus(10, ChronoUnit.MINUTES) : Instant.now().plus(60, ChronoUnit.SECONDS);
+        // Cache result in local memory (10 minutes for positive, 5 minutes for negative to eliminate DB/Redis hammering)
+        Instant localTtl = remembered ? Instant.now().plus(10, ChronoUnit.MINUTES) : Instant.now().plus(5, ChronoUnit.MINUTES);
         localMacCache.put(mac, new CachedMacStatus(remembered, localTtl));
         return remembered;
     }
