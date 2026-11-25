@@ -697,23 +697,28 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
             GwnApiResponse response = executeGwnApi("v1.0.0/device/info", payload);
             if (response.httpStatus >= 200 && response.httpStatus < 300 && response.retCode == 0) {
                 JsonNode ports = objectMapper.readTree(response.rawBody).path("data").path("portInfo");
-                Map<String, Boolean> lan = new java.util.LinkedHashMap<>();
-                if (ports.isArray()) {
-                    for (JsonNode p : ports) {
-                        if (!"0".equals(p.path("role").asText(""))) continue; // chỉ cổng LAN (role=0), bỏ WAN
-                        String silk = p.has("silkScreenPort") && StringUtils.hasText(p.path("silkScreenPort").asText())
-                                ? p.path("silkScreenPort").asText() : p.path("silkNum").asText("");
-                        if (!StringUtils.hasText(silk)) continue;
-                        lan.put(silk, "1".equals(p.path("linkStatus").asText("0")));
-                    }
-                }
-                return new com.wificaptive.gateway.dto.GwnRouterPorts(true, lan);
+                return parseRouterPorts(ports);
             }
             log.warn("[GWN Cloud Gateway] device/info trả mã bất thường (HTTP {}, retCode={})", response.httpStatus, response.retCode);
         } catch (Exception e) {
             log.warn("[GWN Cloud Gateway] Không truy vấn được device/info (cổng LAN): {}", e.getMessage());
         }
         return com.wificaptive.gateway.dto.GwnRouterPorts.unreachable();
+    }
+
+    /** Lọc portInfo của device/info -> link up/down các cổng LAN (role=0), key theo số in trên vỏ cổng. */
+    static com.wificaptive.gateway.dto.GwnRouterPorts parseRouterPorts(JsonNode portInfo) {
+        Map<String, Boolean> lan = new java.util.LinkedHashMap<>();
+        if (portInfo != null && portInfo.isArray()) {
+            for (JsonNode p : portInfo) {
+                if (!"0".equals(p.path("role").asText(""))) continue; // chỉ cổng LAN (role=0), bỏ WAN (role=1)
+                String silk = StringUtils.hasText(p.path("silkScreenPort").asText())
+                        ? p.path("silkScreenPort").asText() : p.path("silkNum").asText("");
+                if (!StringUtils.hasText(silk)) continue;
+                lan.put(silk, "1".equals(p.path("linkStatus").asText("0")));
+            }
+        }
+        return new com.wificaptive.gateway.dto.GwnRouterPorts(true, lan);
     }
 
     private Instant parseGwnLastActiveTime(String raw) {

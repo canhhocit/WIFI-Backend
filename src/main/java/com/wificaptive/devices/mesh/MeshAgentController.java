@@ -65,6 +65,8 @@ public class MeshAgentController {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("mac", d.getMacAddress());
             m.put("host", d.getIpAddress().trim());
+            m.put("status", d.getStatus());               // trạng thái hiện tại để chẩn đoán
+            m.put("source", monitor.monitoringSource(d));  // nguồn: MESH_LIVE / GWN_ONLINE / GWN_OFFLINE...
             out.add(m);
         }
         return ResponseEntity.ok(Map.of("targets", out));
