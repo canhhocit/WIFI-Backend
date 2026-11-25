@@ -597,6 +597,16 @@ public class NetworkDeviceService {
         return NetworkDeviceDto.from(saved);
     }
 
+    /** Client đang kết nối (từ GDMS) của router GWN tại điểm — để liệt kê + thống kê theo cổng/AP. */
+    public List<com.wificaptive.gateway.dto.GwnClientDto> getConnectedClientsByLocation(Long locationId) {
+        if (locationId == null) return java.util.List.of();
+        NetworkDevice router = deviceRepository.findByLocationId(locationId).stream()
+                .filter(d -> "ROUTER".equalsIgnoreCase(d.getDeviceType()))
+                .findFirst().orElse(null);
+        if (router == null) return java.util.List.of();
+        return getConnectedClients(router.getId());
+    }
+
     public List<com.wificaptive.gateway.dto.GwnClientDto> getConnectedClients(Long deviceId) {
         String apMac = null;
         String networkIdOverride = null;
@@ -608,7 +618,7 @@ public class NetworkDeviceService {
                 return snap.clients().stream()
                         .map(c -> new com.wificaptive.gateway.dto.GwnClientDto(
                                 c.mac(), c.ip(), c.hostname(), c.ssid(), dev.getMacAddress(),
-                                dev.getModel(), c.band(), c.rssi(), 0L, 0L, 0L))
+                                dev.getModel(), c.band(), c.rssi(), 0L, 0L, 0L, dev.getGwnLanPort(), false))
                         .toList();
             }
             if (dev != null) {

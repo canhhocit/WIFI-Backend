@@ -11,5 +11,7 @@ public record GwnClientDto(
         Integer rssi, // -30 to -90 dBm
         long bytesRx,
         long bytesTx,
-        long connectTimeSeconds
+        long connectTimeSeconds,
+        String lanPort, // cổng LAN của router mà client đang nối (để thống kê client theo từng AP/cổng); null nếu không có
+        boolean wired
 ) {}

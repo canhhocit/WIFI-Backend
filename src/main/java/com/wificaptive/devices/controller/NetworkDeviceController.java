@@ -57,6 +57,12 @@ public class NetworkDeviceController {
         return ResponseEntity.ok(ApiResponse.ok(deviceService.getGwnPortStatus(locationId)));
     }
 
+    /** Client đang kết nối (từ GDMS) của router GWN tại điểm — liệt kê + thống kê theo cổng/AP. */
+    @GetMapping("/location/{locationId}/connected-clients")
+    public ResponseEntity<ApiResponse<List<com.wificaptive.gateway.dto.GwnClientDto>>> connectedClientsByLocation(@PathVariable Long locationId) {
+        return ResponseEntity.ok(ApiResponse.ok(deviceService.getConnectedClientsByLocation(locationId)));
+    }
+
     @GetMapping
     public ResponseEntity<ApiResponse<PageResponse<NetworkDeviceDto>>> getDevices(
             @RequestParam(required = false) String type,

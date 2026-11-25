@@ -608,12 +608,20 @@ public class GwnCloudGatewayAdapter implements GatewayAdapter {
                         String rawApMac = item.hasNonNull("apId") ? item.path("apId").asText("") : item.path("apMac").asText("");
                         String apMac = formatMacAddress(rawApMac);
                         String apName = item.path("apName").asText("GWN AP");
-                        String band = item.path("wired").asInt(0) == 1 ? "LAN/Mesh" : (item.path("radio").asInt(1) == 2 ? "5GHz" : "2.4GHz");
+                        boolean wired = item.path("wired").asInt(0) == 1;
+                        String band = wired ? "LAN/Mesh" : (item.path("radio").asInt(1) == 2 ? "5GHz" : "2.4GHz");
                         int rssi = item.path("rssi").asInt(-65);
                         long rx = item.path("rxBytes").asLong(0L);
                         long tx = item.path("txBytes").asLong(0L);
                         long time = item.path("connectTime").asLong(0L);
-                        clients.add(new com.wificaptive.gateway.dto.GwnClientDto(mac, ip, host, ssid, apMac, apName, band, rssi, rx, tx, time));
+                        // Cổng LAN của router mà client nối (để thống kê client theo AP/cổng). Thử nhiều key, lấy phần số.
+                        String lanPort = null;
+                        for (String k : new String[]{"port", "lanPort", "lanPortId", "switchPort", "silkScreenPort", "silkNum", "lanId", "portId"}) {
+                            String v = item.path(k).asText("");
+                            if (v != null && !v.isBlank()) { lanPort = v.replaceAll("[^0-9]", ""); break; }
+                        }
+                        if (lanPort != null && lanPort.isBlank()) lanPort = null;
+                        clients.add(new com.wificaptive.gateway.dto.GwnClientDto(mac, ip, host, ssid, apMac, apName, band, rssi, rx, tx, time, lanPort, wired));
                     }
                 }
             }
