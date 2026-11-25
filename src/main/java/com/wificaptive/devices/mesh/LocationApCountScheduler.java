@@ -1,5 +1,6 @@
 package com.wificaptive.devices.mesh;
 
+import com.wificaptive.common.lock.DistributedLockService;
 import com.wificaptive.devices.entity.NetworkDevice;
 import com.wificaptive.devices.repository.NetworkDeviceRepository;
 import com.wificaptive.gateway.adapter.GwnCloudGatewayAdapter;
@@ -12,6 +13,8 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+
+import java.time.Duration;
 
 /**
  * Cache "số AP thực đang kết nối" của từng điểm = số cổng LAN ON trên router GWN của điểm.
@@ -30,18 +33,31 @@ public class LocationApCountScheduler {
     private final GwnCloudGatewayAdapter gwnCloud;
     private final NetworkDeviceRepository deviceRepository;
     private final WifiLocationRepository locationRepository;
+    private final DistributedLockService lockService;
+
+    public LocationApCountScheduler(GwnCloudGatewayAdapter gwnCloud,
+                                    NetworkDeviceRepository deviceRepository,
+                                    WifiLocationRepository locationRepository,
+                                    DistributedLockService lockService) {
+        this.gwnCloud = gwnCloud;
+        this.deviceRepository = deviceRepository;
+        this.locationRepository = locationRepository;
+        this.lockService = lockService;
+    }
 
     public LocationApCountScheduler(GwnCloudGatewayAdapter gwnCloud,
                                     NetworkDeviceRepository deviceRepository,
                                     WifiLocationRepository locationRepository) {
-        this.gwnCloud = gwnCloud;
-        this.deviceRepository = deviceRepository;
-        this.locationRepository = locationRepository;
+        this(gwnCloud, deviceRepository, locationRepository, new DistributedLockService(null));
     }
 
     @Scheduled(fixedDelayString = "${app.mesh-ap.ap-count-interval-ms:300000}", initialDelay = 70000)
-    @Transactional
     public void refreshLocationApCounts() {
+        lockService.runWithLock("scheduler:location-ap-count", Duration.ofMinutes(4), this::doRefreshLocationApCounts);
+    }
+
+    @Transactional
+    public void doRefreshLocationApCounts() {
         int updated = 0, unreachable = 0;
         for (NetworkDevice d : deviceRepository.findRouters()) {
             if (d.getLocationId() == null || !StringUtils.hasText(d.getMacAddress())) continue;

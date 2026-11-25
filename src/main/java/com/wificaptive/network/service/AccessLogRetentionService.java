@@ -1,5 +1,6 @@
 package com.wificaptive.network.service;
 
+import com.wificaptive.common.lock.DistributedLockService;
 import com.wificaptive.network.dto.AccessLogRetentionDto;
 import com.wificaptive.network.entity.AccessLogRetention;
 import com.wificaptive.network.repository.AccessLogRetentionRepository;
@@ -11,6 +12,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -22,9 +24,16 @@ public class AccessLogRetentionService {
     private static final Logger log = LoggerFactory.getLogger(AccessLogRetentionService.class);
 
     private final AccessLogRetentionRepository retentionRepository;
+    private final DistributedLockService lockService;
+
+    public AccessLogRetentionService(AccessLogRetentionRepository retentionRepository,
+                                     DistributedLockService lockService) {
+        this.retentionRepository = retentionRepository;
+        this.lockService = lockService;
+    }
 
     public AccessLogRetentionService(AccessLogRetentionRepository retentionRepository) {
-        this.retentionRepository = retentionRepository;
+        this(retentionRepository, new DistributedLockService(null));
     }
 
     public AccessLogRetention recordSessionCompletion(
@@ -84,14 +93,17 @@ public class AccessLogRetentionService {
     /**
      * Nightly scheduled purge at 03:00 AM UTC for records exceeding 12 months retention window
      * Uses atomic single bulk SQL delete to avoid JVM Heap Out-Of-Memory and row-by-row DB locking.
+     * Wrapped in a distributed lock to prevent concurrent cluster-wide execution.
      */
     @Scheduled(cron = "0 0 3 * * *")
     public void purgeExpiredRetentionLogs() {
-        Instant now = Instant.now();
-        int deleted = retentionRepository.deleteByRetainedUntilBefore(now);
-        if (deleted > 0) {
-            log.info("Purged {} expired access log records older than 12 months legal retention window via bulk delete.", deleted);
-        }
+        lockService.runWithLock("scheduler:access-log-purge", Duration.ofMinutes(30), () -> {
+            Instant now = Instant.now();
+            int deleted = retentionRepository.deleteByRetainedUntilBefore(now);
+            if (deleted > 0) {
+                log.info("Purged {} expired access log records older than 12 months legal retention window via bulk delete.", deleted);
+            }
+        });
     }
 }
 

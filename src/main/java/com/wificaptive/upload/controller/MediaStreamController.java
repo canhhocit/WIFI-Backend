@@ -13,6 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -52,6 +53,7 @@ public class MediaStreamController {
     private final MinioProperties minioProperties;
     private final MinioClient minioClient;
     private final HttpClient httpClient;
+    private final StringRedisTemplate redisTemplate;
 
     @Value("${app.upload.dir:uploads}")
     private String baseUploadDir = "uploads";
@@ -96,14 +98,20 @@ public class MediaStreamController {
     @Autowired
     public MediaStreamController(
             MinioProperties minioProperties,
-            @Autowired(required = false) MinioClient minioClient
+            @Autowired(required = false) MinioClient minioClient,
+            @Autowired(required = false) StringRedisTemplate redisTemplate
     ) {
         this.minioProperties = minioProperties;
         this.minioClient = minioClient;
+        this.redisTemplate = redisTemplate;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(8))
                 .followRedirects(HttpClient.Redirect.NORMAL)
                 .build();
+    }
+
+    public MediaStreamController(MinioProperties minioProperties, MinioClient minioClient) {
+        this(minioProperties, minioClient, null);
     }
 
     @GetMapping({"/uploads/{category}/{filename:.+}", "/api/portal/media/{category}/{filename:.+}"})
@@ -246,6 +254,16 @@ public class MediaStreamController {
     }
 
     private String resolveYouTubeDirectMp4Url(String videoId) {
+        if (redisTemplate != null) {
+            try {
+                String cachedUrl = redisTemplate.opsForValue().get("yt:stream:url:" + videoId);
+                if (cachedUrl != null && !cachedUrl.isBlank()) {
+                    return cachedUrl;
+                }
+            } catch (Exception ignored) {
+            }
+        }
+
         CachedStreamUrl cached = ytStreamUrlCache.get(videoId);
         if (cached != null && !cached.isExpired()) {
             return cached.url;
@@ -277,6 +295,12 @@ public class MediaStreamController {
                     String firstLine = stdout.split("\\R")[0].trim();
                     if (firstLine.startsWith("http")) {
                         ytStreamUrlCache.put(videoId, new CachedStreamUrl(firstLine, Instant.now().plus(Duration.ofHours(2))));
+                        if (redisTemplate != null) {
+                            try {
+                                redisTemplate.opsForValue().set("yt:stream:url:" + videoId, firstLine, 2, java.util.concurrent.TimeUnit.HOURS);
+                            } catch (Exception ignored) {
+                            }
+                        }
                         log.info("[MediaStream] Resolved direct MP4 stream for YouTube video {}", videoId);
                         return firstLine;
                     }
@@ -290,6 +314,16 @@ public class MediaStreamController {
     private void triggerAsyncYouTubeCacheDownload(String videoId, String directMp4Url, String cleanCategory, String cleanFilename) {
         if (!activeYtDownloads.add(videoId)) {
             return;
+        }
+        if (redisTemplate != null) {
+            try {
+                Boolean locked = redisTemplate.opsForValue().setIfAbsent("yt:download:lock:" + videoId, "1", Duration.ofMinutes(10));
+                if (Boolean.FALSE.equals(locked)) {
+                    activeYtDownloads.remove(videoId);
+                    return;
+                }
+            } catch (Exception ignored) {
+            }
         }
         java.util.concurrent.CompletableFuture.runAsync(() -> {
             try {
@@ -338,6 +372,12 @@ public class MediaStreamController {
                 log.debug("Background YouTube cache download failed for {}: {}", videoId, e.getMessage());
             } finally {
                 activeYtDownloads.remove(videoId);
+                if (redisTemplate != null) {
+                    try {
+                        redisTemplate.delete("yt:download:lock:" + videoId);
+                    } catch (Exception ignored) {
+                    }
+                }
             }
         });
     }

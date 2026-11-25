@@ -1,5 +1,6 @@
 package com.wificaptive.portal.scheduler;
 
+import com.wificaptive.common.lock.DistributedLockService;
 import com.wificaptive.incidents.entity.IncidentTicket;
 import com.wificaptive.incidents.entity.IncidentUpdate;
 import com.wificaptive.incidents.repository.IncidentTicketRepository;
@@ -40,6 +41,7 @@ public class PortalHealthProbeScheduler {
     private final WifiLocationRepository locationRepository;
     private final IncidentTicketRepository ticketRepository;
     private final IncidentUpdateRepository updateRepository;
+    private final DistributedLockService lockService;
     private final RestTemplate restTemplate;
 
     @Value("${server.port:8080}")
@@ -49,10 +51,12 @@ public class PortalHealthProbeScheduler {
             WifiLocationRepository locationRepository,
             IncidentTicketRepository ticketRepository,
             IncidentUpdateRepository updateRepository,
+            DistributedLockService lockService,
             RestTemplateBuilder restTemplateBuilder) {
         this.locationRepository = locationRepository;
         this.ticketRepository = ticketRepository;
         this.updateRepository = updateRepository;
+        this.lockService = lockService;
         this.restTemplate = restTemplateBuilder
                 .setConnectTimeout(Duration.ofSeconds(3))
                 .setReadTimeout(Duration.ofSeconds(4))
@@ -64,6 +68,10 @@ public class PortalHealthProbeScheduler {
      */
     @Scheduled(fixedRateString = "${app.portal.health-probe.interval-ms:300000}", initialDelay = 60000)
     public void probePortalHealth() {
+        lockService.runWithLock("scheduler:portal-probe", Duration.ofMinutes(4), this::doProbePortalHealth);
+    }
+
+    public void doProbePortalHealth() {
         java.util.Optional<WifiLocation> sampleLocationOpt = locationRepository.findFirstByActiveTrueAndDeletedFalse();
         if (sampleLocationOpt.isEmpty()) {
             return;

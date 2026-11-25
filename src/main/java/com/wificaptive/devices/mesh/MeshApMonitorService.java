@@ -1,10 +1,12 @@
 package com.wificaptive.devices.mesh;
 
+import com.wificaptive.common.lock.DistributedLockService;
 import com.wificaptive.devices.entity.NetworkDevice;
 import com.wificaptive.devices.repository.NetworkDeviceRepository;
 import com.wificaptive.incidents.service.IncidentTicketService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -12,6 +14,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
@@ -44,6 +47,9 @@ public class MeshApMonitorService {
     private final NetworkDeviceRepository deviceRepository;
     private final IncidentTicketService incidentTicketService;
     private final TransactionTemplate tx;
+
+    @Autowired(required = false)
+    private DistributedLockService lockService;
 
     private final boolean enabled;
     private final String username;
@@ -363,6 +369,14 @@ public class MeshApMonitorService {
     @Scheduled(fixedDelayString = "${app.mesh-ap.poll-interval-ms:60000}", initialDelay = 20000)
     public void pollAll() {
         if (!enabled) return;
+        if (lockService != null) {
+            lockService.runWithLock("scheduler:mesh-ap-poll", Duration.ofSeconds(50), this::doPollAll);
+        } else {
+            doPollAll();
+        }
+    }
+
+    private void doPollAll() {
         List<NetworkDevice> aps = deviceRepository.findAccessPoints().stream()
                 .filter(MeshApMonitorService::isMeshAp)
                 .filter(d -> !"DECOMMISSIONED".equalsIgnoreCase(d.getStatus()))

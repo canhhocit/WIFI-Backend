@@ -1,5 +1,6 @@
 package com.wificaptive.devices.mesh;
 
+import com.wificaptive.common.lock.DistributedLockService;
 import com.wificaptive.devices.entity.NetworkDevice;
 import com.wificaptive.devices.repository.NetworkDeviceRepository;
 import com.wificaptive.gateway.adapter.GwnCloudGatewayAdapter;
@@ -13,6 +14,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -36,20 +38,30 @@ public class MeshGwnStatusScheduler {
     private final GwnCloudGatewayAdapter gwnCloud;
     private final NetworkDeviceRepository deviceRepository;
     private final MeshApMonitorService monitor;
+    private final DistributedLockService lockService;
     /** MAC mesh (chuẩn hóa HEX) -> số cổng LAN trên GWN mà mesh đó cắm (silkScreenPort "4","5","6"). */
     private final Map<String, String> portByMac;
 
     public MeshGwnStatusScheduler(GwnCloudGatewayAdapter gwnCloud,
                                   NetworkDeviceRepository deviceRepository,
                                   MeshApMonitorService monitor,
+                                  DistributedLockService lockService,
                                   @Value("${app.mesh-ap.gwn-port-map:}") String gwnPortMapRaw) {
         this.gwnCloud = gwnCloud;
         this.deviceRepository = deviceRepository;
         this.monitor = monitor;
+        this.lockService = lockService;
         this.portByMac = parsePortMap(gwnPortMapRaw);
         if (!portByMac.isEmpty()) {
             log.info("[MeshGwnStatus] Khai cổng GWN cho {} mesh: {}", portByMac.size(), portByMac);
         }
+    }
+
+    public MeshGwnStatusScheduler(GwnCloudGatewayAdapter gwnCloud,
+                                  NetworkDeviceRepository deviceRepository,
+                                  MeshApMonitorService monitor,
+                                  String gwnPortMapRaw) {
+        this(gwnCloud, deviceRepository, monitor, new DistributedLockService(null), gwnPortMapRaw);
     }
 
     /** Phân tích "MAC=cổng,MAC=cổng" (vd "24:0B:2B:47:2A:22=4,24:0B:2B:46:F8:3A=6"). */
@@ -72,7 +84,7 @@ public class MeshGwnStatusScheduler {
 
     @Scheduled(fixedDelayString = "${app.mesh-ap.gwn-poll-interval-ms:120000}", initialDelay = 40000)
     public void pollMeshStatusViaGwnCloud() {
-        refreshNow();
+        lockService.runWithLock("scheduler:mesh-gwn-status", Duration.ofSeconds(100), this::refreshNow);
     }
 
     /** Chạy ngay một lượt cập nhật on/off từ GWN Cloud (dùng cho nút "làm mới" trên giao diện admin). */

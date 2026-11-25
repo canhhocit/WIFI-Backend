@@ -1,0 +1,96 @@
+# ==============================================================================
+# HỆ THỐNG QUẢN LÝ DỊCH VỤ WIFI CÔNG CỘNG TP HẢI PHÒNG (1.584 ĐIỂM)
+# Profile Sản phẩm: PRODUCTION (VIETTEL IDC CLOUD TIER III)
+# Hạ tầng: K8s 4 Nodes Worker + PostgreSQL Master/Standby HA + Redis Cluster + MinIO
+# ==============================================================================
+
+server:
+  port: ${SERVER_PORT:8081}
+  tomcat:
+    threads:
+      max: ${TOMCAT_MAX_THREADS:300}
+      min-spare: ${TOMCAT_MIN_SPARE:50}
+    max-connections: ${TOMCAT_MAX_CONNECTIONS:15000}
+    accept-count: ${TOMCAT_ACCEPT_COUNT:2000}
+    connection-timeout: 10000
+    keep-alive-timeout: 30000
+    max-keep-alive-requests: 2000
+
+spring:
+  # Cụm Redis phân tán nội bộ (vm-cache-redis-01, 02, 03 / Kubernetes Service)
+  data:
+    redis:
+      host: ${REDIS_HOST:manage-wifi-redis.default.svc.cluster.local}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      ssl:
+        enabled: ${REDIS_SSL_ENABLED:false}
+      timeout: 2000ms
+
+  # Kết nối CSDL PostgreSQL 16 Primary (Active Master qua PgBouncer HA)
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://postgres-ha-service.default.svc.cluster.local:5432/wifi_haiphong}
+    username: ${POSTGRES_USER:${SPRING_DATASOURCE_USERNAME:postgres}}
+    password: ${POSTGRES_PASSWORD:${SPRING_DATASOURCE_PASSWORD:}}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      pool-name: CaptivePortalHikariPool
+      maximum-pool-size: ${HIKARI_MAX_POOL_SIZE:20}
+      minimum-idle: ${HIKARI_MIN_IDLE:5}
+      connection-timeout: 15000
+      idle-timeout: 300000
+      max-lifetime: 600000
+      keepalive-time: 30000
+      leak-detection-threshold: 30000
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    open-in-view: false
+    properties:
+      "[hibernate.jdbc.batch_size]": 100
+      "[hibernate.order_inserts]": true
+      "[hibernate.order_updates]": true
+      "[hibernate.jdbc.batch_versioned_data]": true
+      "[hibernate.generate_statistics]": false
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    validate-on-migrate: true
+    locations: classpath:db/migration
+
+minio:
+  enabled: ${MINIO_ENABLED:true}
+  endpoint: ${MINIO_ENDPOINT:http://minio-service.default.svc.cluster.local:9000}
+  access-key: ${MINIO_ACCESS_KEY:minioadmin}
+  secret-key: ${MINIO_SECRET_KEY:miniopassword}
+  bucket: ${MINIO_BUCKET:wifi-haiphong}
+  public-url: ${MINIO_PUBLIC_URL:https://media-wifi.haiphong.gov.vn/wifi-haiphong}
+
+app:
+  # Giám sát & Quét AP Mesh định kỳ
+  mesh-ap:
+    enabled: ${MESH_AP_ENABLED:true}
+    gwn-status-enabled: ${MESH_GWN_STATUS_ENABLED:true}
+    poll-interval-ms: ${MESH_AP_POLL_INTERVAL_MS:60000}
+    gwn-poll-interval-ms: ${MESH_GWN_POLL_INTERVAL_MS:120000}
+    ap-count-interval-ms: ${MESH_AP_COUNT_INTERVAL_MS:300000}
+
+  # Cổng xác thực RADIUS Server UDP 1812/1813 nội bộ
+  radius:
+    enabled: ${RADIUS_ENABLED:true}
+    port: ${RADIUS_PORT:1812}
+    acct-port: ${RADIUS_ACCT_PORT:1813}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: when_authorized
+      probes:
+        enabled: true

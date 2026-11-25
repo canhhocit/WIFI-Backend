@@ -1,5 +1,6 @@
 package com.wificaptive.analytics.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wificaptive.analytics.dto.AuthFunnelStepDto;
 import com.wificaptive.analytics.dto.DashboardOverviewDto;
 import com.wificaptive.analytics.dto.DeviceTopologySummaryDto;
@@ -12,12 +13,15 @@ import com.wificaptive.gateway.adapter.GatewayAdapter;
 import com.wificaptive.locations.repository.WifiLocationRepository;
 import com.wificaptive.sessions.entity.SessionStatus;
 import com.wificaptive.sessions.repository.GuestSessionRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class AnalyticsService {
@@ -27,6 +31,8 @@ public class AnalyticsService {
     private final DeviceRepository deviceRepository;
     private final GatewayAdapter gatewayAdapter;
     private final NetworkDeviceRepository networkDeviceRepository;
+    private final StringRedisTemplate redisTemplate;
+    private final ObjectMapper objectMapper;
 
     private volatile CachedOverview cachedOverview;
     private static final long OVERVIEW_CACHE_TTL_MS = 15000; // 15s cache protects database under concurrent admin dashboard traffic
@@ -48,16 +54,40 @@ public class AnalyticsService {
             WifiLocationRepository locationRepository,
             DeviceRepository deviceRepository,
             GatewayAdapter gatewayAdapter,
-            NetworkDeviceRepository networkDeviceRepository) {
+            NetworkDeviceRepository networkDeviceRepository,
+            @Autowired(required = false) StringRedisTemplate redisTemplate,
+            @Autowired(required = false) ObjectMapper objectMapper) {
         this.sessionRepository = sessionRepository;
         this.locationRepository = locationRepository;
         this.deviceRepository = deviceRepository;
         this.gatewayAdapter = gatewayAdapter;
         this.networkDeviceRepository = networkDeviceRepository;
+        this.redisTemplate = redisTemplate;
+        this.objectMapper = objectMapper;
+    }
+
+    public AnalyticsService(
+            GuestSessionRepository sessionRepository,
+            WifiLocationRepository locationRepository,
+            DeviceRepository deviceRepository,
+            GatewayAdapter gatewayAdapter,
+            NetworkDeviceRepository networkDeviceRepository) {
+        this(sessionRepository, locationRepository, deviceRepository, gatewayAdapter, networkDeviceRepository, null, null);
     }
 
     @Transactional(readOnly = true)
     public DashboardOverviewDto getOverview() {
+        if (redisTemplate != null && objectMapper != null) {
+            try {
+                String cachedJson = redisTemplate.opsForValue().get("cache:analytics:overview");
+                if (cachedJson != null && !cachedJson.isBlank()) {
+                    return objectMapper.readValue(cachedJson, DashboardOverviewDto.class);
+                }
+            } catch (Exception ignored) {
+                // Redis error fallback to local cache
+            }
+        }
+
         CachedOverview currentCache = this.cachedOverview;
         if (currentCache != null && currentCache.isValid()) {
             return currentCache.dto;
@@ -171,6 +201,13 @@ public class AnalyticsService {
         dto.setTopology(topology);
 
         this.cachedOverview = new CachedOverview(dto, System.currentTimeMillis());
+        if (redisTemplate != null && objectMapper != null) {
+            try {
+                String json = objectMapper.writeValueAsString(dto);
+                redisTemplate.opsForValue().set("cache:analytics:overview", json, 15, TimeUnit.SECONDS);
+            } catch (Exception ignored) {
+            }
+        }
         return dto;
     }
 

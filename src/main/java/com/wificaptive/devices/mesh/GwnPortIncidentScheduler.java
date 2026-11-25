@@ -1,5 +1,6 @@
 package com.wificaptive.devices.mesh;
 
+import com.wificaptive.common.lock.DistributedLockService;
 import com.wificaptive.devices.entity.NetworkDevice;
 import com.wificaptive.devices.repository.NetworkDeviceRepository;
 import com.wificaptive.gateway.adapter.GwnCloudGatewayAdapter;
@@ -14,6 +15,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.Duration;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -33,21 +35,34 @@ public class GwnPortIncidentScheduler {
     private final GwnCloudGatewayAdapter gwnCloud;
     private final NetworkDeviceRepository deviceRepository;
     private final IncidentTicketService incidentService;
+    private final DistributedLockService lockService;
 
     /** Trạng thái up/down lần trước của từng cổng LAN (để phát hiện chuyển OFFLINE). */
     private final Map<String, Boolean> prevUp = new ConcurrentHashMap<>();
 
     public GwnPortIncidentScheduler(GwnCloudGatewayAdapter gwnCloud,
                                     NetworkDeviceRepository deviceRepository,
-                                    IncidentTicketService incidentService) {
+                                    IncidentTicketService incidentService,
+                                    DistributedLockService lockService) {
         this.gwnCloud = gwnCloud;
         this.deviceRepository = deviceRepository;
         this.incidentService = incidentService;
+        this.lockService = lockService;
+    }
+
+    public GwnPortIncidentScheduler(GwnCloudGatewayAdapter gwnCloud,
+                                    NetworkDeviceRepository deviceRepository,
+                                    IncidentTicketService incidentService) {
+        this(gwnCloud, deviceRepository, incidentService, new DistributedLockService(null));
     }
 
     @Scheduled(fixedDelayString = "${app.mesh-ap.gwn-poll-interval-ms:120000}", initialDelay = 55000)
-    @Transactional(readOnly = true)
     public void checkGwnPortIncidents() {
+        lockService.runWithLock("scheduler:gwn-port-incident", Duration.ofSeconds(100), this::doCheckGwnPortIncidents);
+    }
+
+    @Transactional(readOnly = true)
+    public void doCheckGwnPortIncidents() {
         GwnRouterPorts ports = gwnCloud.fetchRouterPorts();
         if (!ports.apiReachable() || !ports.hasLanInfo()) return;
 
