@@ -49,6 +49,7 @@ public class AnalyticsService {
         }
     }
 
+    @Autowired
     public AnalyticsService(
             GuestSessionRepository sessionRepository,
             WifiLocationRepository locationRepository,

@@ -8,6 +8,7 @@ import com.wificaptive.gateway.dto.GwnClientLiveStatus;
 import com.wificaptive.gateway.dto.GwnRouterPorts;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -42,6 +43,7 @@ public class MeshGwnStatusScheduler {
     /** MAC mesh (chuẩn hóa HEX) -> số cổng LAN trên GWN mà mesh đó cắm (silkScreenPort "4","5","6"). */
     private final Map<String, String> portByMac;
 
+    @Autowired
     public MeshGwnStatusScheduler(GwnCloudGatewayAdapter gwnCloud,
                                   NetworkDeviceRepository deviceRepository,
                                   MeshApMonitorService monitor,

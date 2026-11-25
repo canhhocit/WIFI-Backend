@@ -6,6 +6,7 @@ import com.wificaptive.network.entity.AccessLogRetention;
 import com.wificaptive.network.repository.AccessLogRetentionRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -26,6 +27,7 @@ public class AccessLogRetentionService {
     private final AccessLogRetentionRepository retentionRepository;
     private final DistributedLockService lockService;
 
+    @Autowired
     public AccessLogRetentionService(AccessLogRetentionRepository retentionRepository,
                                      DistributedLockService lockService) {
         this.retentionRepository = retentionRepository;

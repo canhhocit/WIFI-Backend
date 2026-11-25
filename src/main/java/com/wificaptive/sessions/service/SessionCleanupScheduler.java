@@ -3,6 +3,7 @@ package com.wificaptive.sessions.service;
 import com.wificaptive.common.lock.DistributedLockService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -16,6 +17,7 @@ public class SessionCleanupScheduler {
     private final GuestSessionService sessionService;
     private final DistributedLockService lockService;
 
+    @Autowired
     public SessionCleanupScheduler(GuestSessionService sessionService,
                                    DistributedLockService lockService) {
         this.sessionService = sessionService;

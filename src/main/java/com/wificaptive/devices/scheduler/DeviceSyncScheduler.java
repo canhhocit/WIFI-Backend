@@ -6,6 +6,7 @@ import com.wificaptive.devices.service.NetworkDeviceService;
 import com.wificaptive.incidents.service.IncidentTicketService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -22,6 +23,7 @@ public class DeviceSyncScheduler {
     private final IncidentTicketService incidentTicketService;
     private final DistributedLockService lockService;
 
+    @Autowired
     public DeviceSyncScheduler(NetworkDeviceService deviceService,
                                IncidentTicketService incidentTicketService,
                                DistributedLockService lockService) {
