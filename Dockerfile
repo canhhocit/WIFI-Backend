@@ -19,8 +19,10 @@ RUN mvn clean package -DskipTests -B
 FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
 
-# Create non-root system user for security
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup && \
+# Install python3, nodejs, and yt-dlp so backend can proxy/cache YouTube campaign videos as same-origin MP4 streams for offline Captive Portal phones
+RUN apk add --no-cache python3 py3-pip nodejs ffmpeg && \
+    pip3 install --no-cache-dir --break-system-packages yt-dlp && \
+    addgroup -S appgroup && adduser -S appuser -G appgroup && \
     mkdir -p /app/uploads && chown -R appuser:appgroup /app
 
 # Copy packaged JAR from builder

@@ -18,22 +18,31 @@ public class CampaignController {
 
     private final CampaignService campaignService;
     private final com.wificaptive.portal.service.PortalService portalService;
+    private final com.wificaptive.upload.controller.MediaStreamController mediaStreamController;
 
     @org.springframework.beans.factory.annotation.Autowired
     public CampaignController(
             CampaignService campaignService,
-            @org.springframework.beans.factory.annotation.Autowired(required = false) com.wificaptive.portal.service.PortalService portalService) {
+            @org.springframework.beans.factory.annotation.Autowired(required = false) com.wificaptive.portal.service.PortalService portalService,
+            @org.springframework.beans.factory.annotation.Autowired(required = false) com.wificaptive.upload.controller.MediaStreamController mediaStreamController) {
         this.campaignService = campaignService;
         this.portalService = portalService;
+        this.mediaStreamController = mediaStreamController;
     }
 
     public CampaignController(CampaignService campaignService) {
-        this(campaignService, null);
+        this(campaignService, null, null);
     }
 
     private void invalidatePortalCache() {
         if (portalService != null) {
             portalService.invalidatePortalCache();
+        }
+    }
+
+    private void warmUpVideoIfNeeded(CampaignDto dto) {
+        if (dto != null && mediaStreamController != null && dto.getVideoUrl() != null) {
+            mediaStreamController.warmUpYouTubeVideoAsync(dto.getVideoUrl());
         }
     }
 
@@ -57,6 +66,7 @@ public class CampaignController {
             Authentication auth) {
         String username = auth != null ? auth.getName() : "admin";
         CampaignDto dto = campaignService.createCampaign(req, username);
+        warmUpVideoIfNeeded(dto);
         invalidatePortalCache();
         return ApiResponse.ok("Tạo chiến dịch mới thành công", dto);
     }
@@ -68,6 +78,7 @@ public class CampaignController {
             Authentication auth) {
         String username = auth != null ? auth.getName() : "admin";
         CampaignDto dto = campaignService.submitForApproval(id, username);
+        warmUpVideoIfNeeded(dto);
         invalidatePortalCache();
         return ApiResponse.ok("Đã gửi phê duyệt chiến dịch", dto);
     }
@@ -80,6 +91,7 @@ public class CampaignController {
             Authentication auth) {
         String username = auth != null ? auth.getName() : "approver";
         CampaignDto dto = campaignService.approveCampaign(id, req, username);
+        warmUpVideoIfNeeded(dto);
         invalidatePortalCache();
         return ApiResponse.ok("Phê duyệt chiến dịch thành công", dto);
     }
@@ -104,6 +116,7 @@ public class CampaignController {
             Authentication auth) {
         String username = auth != null ? auth.getName() : "editor";
         CampaignDto dto = campaignService.updateCampaign(id, req, username);
+        warmUpVideoIfNeeded(dto);
         invalidatePortalCache();
         return ApiResponse.ok("Cập nhật chiến dịch thành công", dto);
     }

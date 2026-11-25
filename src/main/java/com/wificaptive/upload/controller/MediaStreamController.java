@@ -1,8 +1,11 @@
 package com.wificaptive.upload.controller;
 
 import com.wificaptive.upload.config.MinioProperties;
+import io.minio.BucketExistsArgs;
 import io.minio.GetObjectArgs;
+import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
+import io.minio.PutObjectArgs;
 import io.minio.StatObjectArgs;
 import io.minio.StatObjectResponse;
 import jakarta.servlet.http.HttpServletResponse;
@@ -55,6 +58,24 @@ public class MediaStreamController {
 
     // In-memory cache for proxied YouTube thumbnails (avoids external requests inside captive portal Walled Garden)
     private final Map<String, CachedBinary> ytThumbCache = new ConcurrentHashMap<>();
+    // In-memory cache for resolved direct YouTube MP4 stream URLs (itag 18)
+    private final Map<String, CachedStreamUrl> ytStreamUrlCache = new ConcurrentHashMap<>();
+    // Track in-flight background downloads so we don't duplicate downloads for the same videoId
+    private final java.util.Set<String> activeYtDownloads = ConcurrentHashMap.newKeySet();
+
+    private static class CachedStreamUrl {
+        final String url;
+        final Instant expiresAt;
+
+        CachedStreamUrl(String url, Instant expiresAt) {
+            this.url = url;
+            this.expiresAt = expiresAt;
+        }
+
+        boolean isExpired() {
+            return Instant.now().isAfter(expiresAt);
+        }
+    }
 
     private static class CachedBinary {
         final byte[] data;
@@ -126,13 +147,199 @@ public class MediaStreamController {
                     : minioProperties.getPublicUrl();
             String remoteUrl = baseUrl + "/" + objectKey;
             try {
-                return streamFromRemoteUrl(remoteUrl, rangeHeader, defaultMime);
+                ResponseEntity<StreamingResponseBody> remoteResp = streamFromRemoteUrl(remoteUrl, rangeHeader, defaultMime);
+                if (remoteResp.getStatusCode().is2xxSuccessful()) {
+                    return remoteResp;
+                }
             } catch (Exception e) {
-                log.warn("Failed to proxy remote media {}: {}", remoteUrl, e.getMessage());
+                log.debug("Remote MinIO public URL miss for {}: {}", remoteUrl, e.getMessage());
+            }
+        }
+
+        // 4. Automatic YouTube-to-MP4 same-origin resolution & background caching (for filenames matching yt_<videoId>.mp4)
+        // Allows Captive Portal phones with NO Internet connection ("Không có kết nối Internet") to watch YouTube campaign videos!
+        if (cleanFilename.startsWith("yt_") && cleanFilename.endsWith(".mp4") && cleanFilename.length() > 7) {
+            String ytId = cleanFilename.substring(3, cleanFilename.length() - 4);
+            ResponseEntity<StreamingResponseBody> ytStream = streamAndCacheYouTubeVideo(ytId, cleanCategory, cleanFilename, rangeHeader);
+            if (ytStream != null) {
+                return ytStream;
             }
         }
 
         return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+    }
+
+    @GetMapping("/api/portal/media/yt-video/{videoId}")
+    public ResponseEntity<StreamingResponseBody> streamYouTubeVideoById(
+            @PathVariable("videoId") String videoId,
+            @RequestHeader(value = HttpHeaders.RANGE, required = false) String rangeHeader
+    ) {
+        String cleanId = videoId != null ? videoId.replaceAll("[^a-zA-Z0-9_-]", "") : "";
+        if (cleanId.length() < 6 || cleanId.length() > 20) {
+            return ResponseEntity.badRequest().build();
+        }
+        return streamMedia("campaign_videos", "yt_" + cleanId + ".mp4", rangeHeader);
+    }
+
+    /**
+     * Proactively pre-downloads and caches a YouTube campaign video into Local Disk and MinIO
+     * whenever a campaign is created, updated, or approved so Captive Portal guests can stream
+     * it immediately as a same-origin MP4 even without Internet access.
+     */
+    public void warmUpYouTubeVideoAsync(String rawVideoUrl) {
+        String videoId = extractYouTubeId(rawVideoUrl);
+        if (videoId == null) return;
+        String cleanFilename = "yt_" + videoId + ".mp4";
+        Path localPath = Paths.get(baseUploadDir, "campaign_videos", cleanFilename).toAbsolutePath().normalize();
+        if (Files.exists(localPath)) {
+            return;
+        }
+        java.util.concurrent.CompletableFuture.runAsync(() -> {
+            try {
+                String directUrl = resolveYouTubeDirectMp4Url(videoId);
+                if (StringUtils.hasText(directUrl)) {
+                    triggerAsyncYouTubeCacheDownload(videoId, directUrl, "campaign_videos", cleanFilename);
+                }
+            } catch (Exception e) {
+                log.debug("Failed to warm up YouTube video {}: {}", videoId, e.getMessage());
+            }
+        });
+    }
+
+    public static String extractYouTubeId(String url) {
+        if (!StringUtils.hasText(url)) return null;
+        String trimmed = url.trim();
+        java.util.regex.Matcher m1 = java.util.regex.Pattern
+                .compile("(?:youtu\\.be/|youtube(?:-nocookie)?\\.com/(?:embed/|v/|shorts/|live/))([a-zA-Z0-9_-]{11})")
+                .matcher(trimmed);
+        if (m1.find()) return m1.group(1);
+        java.util.regex.Matcher m2 = java.util.regex.Pattern
+                .compile("[?&]v=([a-zA-Z0-9_-]{11})")
+                .matcher(trimmed);
+        if (m2.find()) return m2.group(1);
+        return null;
+    }
+
+    private ResponseEntity<StreamingResponseBody> streamAndCacheYouTubeVideo(
+            String videoId,
+            String cleanCategory,
+            String cleanFilename,
+            String rangeHeader
+    ) {
+        String cleanId = videoId.replaceAll("[^a-zA-Z0-9_-]", "");
+        if (cleanId.length() < 6 || cleanId.length() > 20) return null;
+
+        String directMp4Url = resolveYouTubeDirectMp4Url(cleanId);
+        if (!StringUtils.hasText(directMp4Url)) {
+            return null;
+        }
+
+        // Trigger async background download into Local Disk + MinIO so subsequent viewers stream from local cache in <2ms
+        triggerAsyncYouTubeCacheDownload(cleanId, directMp4Url, cleanCategory, cleanFilename);
+
+        try {
+            return streamFromRemoteUrl(directMp4Url, rangeHeader, "video/mp4");
+        } catch (Exception e) {
+            log.warn("Failed to proxy live YouTube MP4 stream for {}: {}", cleanId, e.getMessage());
+            return null;
+        }
+    }
+
+    private String resolveYouTubeDirectMp4Url(String videoId) {
+        CachedStreamUrl cached = ytStreamUrlCache.get(videoId);
+        if (cached != null && !cached.isExpired()) {
+            return cached.url;
+        }
+
+        String watchUrl = "https://www.youtube.com/watch?v=" + videoId;
+        String[][] commands = new String[][]{
+                {"yt-dlp", "--js-runtimes", "node", "--remote-components", "ejs:github", "-f", "18/best[ext=mp4]", "-g", watchUrl},
+                {"python", "-m", "yt_dlp", "--js-runtimes", "node", "--remote-components", "ejs:github", "-f", "18/best[ext=mp4]", "-g", watchUrl},
+                {"python3", "-m", "yt_dlp", "--js-runtimes", "node", "--remote-components", "ejs:github", "-f", "18/best[ext=mp4]", "-g", watchUrl},
+                {"yt-dlp", "-f", "18/best[ext=mp4]", "-g", watchUrl}
+        };
+
+        for (String[] cmd : commands) {
+            try {
+                ProcessBuilder pb = new ProcessBuilder(cmd);
+                pb.redirectErrorStream(false);
+                Process proc = pb.start();
+                String stdout;
+                try (InputStream is = proc.getInputStream()) {
+                    stdout = new String(is.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).trim();
+                }
+                boolean finished = proc.waitFor(20, java.util.concurrent.TimeUnit.SECONDS);
+                if (!finished) {
+                    proc.destroyForcibly();
+                    continue;
+                }
+                if (proc.exitValue() == 0 && stdout.startsWith("http")) {
+                    String firstLine = stdout.split("\\R")[0].trim();
+                    if (firstLine.startsWith("http")) {
+                        ytStreamUrlCache.put(videoId, new CachedStreamUrl(firstLine, Instant.now().plus(Duration.ofHours(2))));
+                        log.info("[MediaStream] Resolved direct MP4 stream for YouTube video {}", videoId);
+                        return firstLine;
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return null;
+    }
+
+    private void triggerAsyncYouTubeCacheDownload(String videoId, String directMp4Url, String cleanCategory, String cleanFilename) {
+        if (!activeYtDownloads.add(videoId)) {
+            return;
+        }
+        java.util.concurrent.CompletableFuture.runAsync(() -> {
+            try {
+                Path targetDir = Paths.get(baseUploadDir, cleanCategory).toAbsolutePath().normalize();
+                if (!Files.exists(targetDir)) {
+                    Files.createDirectories(targetDir);
+                }
+                Path finalFile = targetDir.resolve(cleanFilename);
+                if (Files.exists(finalFile) && Files.size(finalFile) > 1024) {
+                    return;
+                }
+                Path tempFile = targetDir.resolve(cleanFilename + ".part");
+                HttpRequest req = HttpRequest.newBuilder()
+                        .uri(URI.create(directMp4Url))
+                        .timeout(Duration.ofMinutes(3))
+                        .GET()
+                        .build();
+                HttpResponse<Path> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofFile(tempFile));
+                if (resp.statusCode() >= 200 && resp.statusCode() < 300 && Files.exists(tempFile) && Files.size(tempFile) > 1024) {
+                    Files.move(tempFile, finalFile, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    log.info("[MediaStream] Cached YouTube video {} to local disk: {} ({} bytes)", videoId, finalFile, Files.size(finalFile));
+
+                    if (minioClient != null && minioProperties != null && minioProperties.isEnabled()) {
+                        String bucket = minioProperties.getBucket();
+                        String objectKey = cleanCategory + "/" + cleanFilename;
+                        boolean found = minioClient.bucketExists(BucketExistsArgs.builder().bucket(bucket).build());
+                        if (!found) {
+                            minioClient.makeBucket(MakeBucketArgs.builder().bucket(bucket).build());
+                        }
+                        try (InputStream fis = Files.newInputStream(finalFile)) {
+                            minioClient.putObject(
+                                    PutObjectArgs.builder()
+                                            .bucket(bucket)
+                                            .object(objectKey)
+                                            .stream(fis, Files.size(finalFile), -1)
+                                            .contentType("video/mp4")
+                                            .build()
+                            );
+                            log.info("[MediaStream] Uploaded cached YouTube video {} to MinIO: {}/{}", videoId, bucket, objectKey);
+                        }
+                    }
+                } else {
+                    Files.deleteIfExists(tempFile);
+                }
+            } catch (Exception e) {
+                log.debug("Background YouTube cache download failed for {}: {}", videoId, e.getMessage());
+            } finally {
+                activeYtDownloads.remove(videoId);
+            }
+        });
     }
 
     /**
