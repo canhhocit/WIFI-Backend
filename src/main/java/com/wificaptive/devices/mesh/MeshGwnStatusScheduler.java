@@ -81,7 +81,7 @@ public class MeshGwnStatusScheduler {
         // không chờ GWN quên client như client/info). Lấy 1 lần dùng cho mọi mesh của cùng router.
         GwnRouterPorts ports = gwnCloud.fetchRouterPorts();
         int online = 0, offline = 0, skipped = 0;
-        for (NetworkDevice d : deviceRepository.findAll()) {
+        for (NetworkDevice d : deviceRepository.findAccessPoints()) {
             if (!MeshApMonitorService.isMeshAp(d)) continue;
             if ("DECOMMISSIONED".equalsIgnoreCase(d.getStatus())) continue;
             if (d.getId() != null && monitor.isAgentFed(d.getId())) { skipped++; continue; }

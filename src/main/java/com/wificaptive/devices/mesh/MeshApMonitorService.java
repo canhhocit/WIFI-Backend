@@ -363,7 +363,7 @@ public class MeshApMonitorService {
     @Scheduled(fixedDelayString = "${app.mesh-ap.poll-interval-ms:60000}", initialDelay = 20000)
     public void pollAll() {
         if (!enabled) return;
-        List<NetworkDevice> aps = deviceRepository.findAll().stream()
+        List<NetworkDevice> aps = deviceRepository.findAccessPoints().stream()
                 .filter(MeshApMonitorService::isMeshAp)
                 .filter(d -> !"DECOMMISSIONED".equalsIgnoreCase(d.getStatus()))
                 .filter(d -> !isAgentFed(d.getId()))
@@ -380,7 +380,7 @@ public class MeshApMonitorService {
 
     /** Danh sách mesh AP có IP quản trị để agent biết cần đọc thiết bị nào. */
     public List<NetworkDevice> agentTargets() {
-        return deviceRepository.findAll().stream()
+        return deviceRepository.findAccessPoints().stream()
                 .filter(MeshApMonitorService::isMeshAp)
                 .filter(d -> !"DECOMMISSIONED".equalsIgnoreCase(d.getStatus()))
                 .filter(d -> StringUtils.hasText(d.getIpAddress()))

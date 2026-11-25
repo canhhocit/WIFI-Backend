@@ -43,8 +43,7 @@ public class LocationApCountScheduler {
     @Transactional
     public void refreshLocationApCounts() {
         int updated = 0, unreachable = 0;
-        for (NetworkDevice d : deviceRepository.findAll()) {
-            if (!"ROUTER".equalsIgnoreCase(d.getDeviceType())) continue;
+        for (NetworkDevice d : deviceRepository.findRouters()) {
             if (d.getLocationId() == null || !StringUtils.hasText(d.getMacAddress())) continue;
             try {
                 String mac = d.getMacAddress().replaceAll("[^0-9A-Fa-f]", "");
