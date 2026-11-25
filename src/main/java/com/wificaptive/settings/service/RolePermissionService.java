@@ -101,8 +101,12 @@ public class RolePermissionService {
             }
 
             Optional<RolePermission> permOpt = repository.findByRoleNameAndModuleName(role, moduleName);
-            if (permOpt.isEmpty() && "ROLE_DISTRICT_OFFICER".equals(role)) {
-                permOpt = repository.findByRoleNameAndModuleName("ROLE_COMMUNE_OFFICER", moduleName);
+            if (permOpt.isEmpty()) {
+                if ("ROLE_COMMUNE_OFFICER".equals(role)) {
+                    permOpt = repository.findByRoleNameAndModuleName("ROLE_DISTRICT_OFFICER", moduleName);
+                } else if ("ROLE_DISTRICT_OFFICER".equals(role)) {
+                    permOpt = repository.findByRoleNameAndModuleName("ROLE_COMMUNE_OFFICER", moduleName);
+                }
             }
 
             if (permOpt.isPresent()) {
@@ -118,9 +122,40 @@ public class RolePermissionService {
                 if (allowed) {
                     return true;
                 }
+            } else {
+                if (getDefaultPermission(role, moduleName, action.toUpperCase())) {
+                    return true;
+                }
             }
         }
 
+        return false;
+    }
+
+    private boolean getDefaultPermission(String role, String moduleName, String action) {
+        if ("ROLE_SUPER_ADMIN".equals(role) || "ROLE_ADMIN".equals(role)) {
+            return true;
+        }
+        if ("ROLE_SOTTTT_ADMIN".equals(role)) {
+            return switch (moduleName) {
+                case "LOCATIONS" -> "VIEW".equals(action) || "CREATE".equals(action) || "EDIT".equals(action) || "APPROVE".equals(action);
+                case "DEVICES" -> "VIEW".equals(action);
+                case "CAMPAIGNS" -> true;
+                case "INCIDENTS" -> "VIEW".equals(action) || "APPROVE".equals(action);
+                case "USERS" -> "VIEW".equals(action) || "CREATE".equals(action) || "EDIT".equals(action);
+                case "SETTINGS" -> "VIEW".equals(action);
+                default -> false;
+            };
+        }
+        if ("ROLE_COMMUNE_OFFICER".equals(role) || "ROLE_DISTRICT_OFFICER".equals(role)) {
+            return switch (moduleName) {
+                case "LOCATIONS" -> "VIEW".equals(action) || "EDIT".equals(action);
+                case "DEVICES" -> "VIEW".equals(action);
+                case "CAMPAIGNS" -> "VIEW".equals(action) || "CREATE".equals(action);
+                case "INCIDENTS" -> "VIEW".equals(action) || "CREATE".equals(action);
+                default -> false;
+            };
+        }
         return false;
     }
 }
