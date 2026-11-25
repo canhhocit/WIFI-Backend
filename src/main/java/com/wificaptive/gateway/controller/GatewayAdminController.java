@@ -21,7 +21,6 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/admin/gateway")
-@PreAuthorize("@rbac.hasPermission('SETTINGS', 'VIEW')")
 public class GatewayAdminController {
 
     private final GatewayAdapter gatewayAdapter;
@@ -41,6 +40,7 @@ public class GatewayAdminController {
     }
 
     @GetMapping("/status")
+    @PreAuthorize("isAuthenticated()")
     public ApiResponse<GatewayStatusDto> getGatewayStatus() {
         return ApiResponse.ok(gatewayAdapter.getStatus());
     }
@@ -89,6 +89,7 @@ public class GatewayAdminController {
     }
 
     @GetMapping("/transactions")
+    @PreAuthorize("@rbac.hasPermission('SETTINGS', 'VIEW')")
     public ApiResponse<PageResponse<GatewayTransaction>> getTransactions(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
