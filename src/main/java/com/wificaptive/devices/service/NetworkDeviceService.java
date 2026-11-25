@@ -611,25 +611,18 @@ public class NetworkDeviceService {
     }
 
     public List<com.wificaptive.gateway.dto.GwnClientDto> getConnectedClients(Long deviceId) {
-        String apMac = null;
-        String networkIdOverride = null;
-        NetworkDevice dev = null;
-        if (deviceId != null) {
-            dev = deviceRepository.findById(deviceId).orElse(null);
-            if (dev != null && MeshApMonitorService.isMeshAp(dev)) {
-                // Mesh AP: Grandstream không thấy client của mesh -> đọc thẳng từ thiết bị
-                MeshApSnapshotDto snap = meshApMonitorService.getSnapshot(dev, true);
-                return snap.clients().stream()
-                        .map(c -> new com.wificaptive.gateway.dto.GwnClientDto(
-                                c.mac(), c.ip(), c.hostname(), c.ssid(), dev.getMacAddress(),
-                                dev.getModel(), c.band(), c.rssi(), 0L, 0L, 0L, dev.getGwnLanPort(), false))
-                        .toList();
-            }
-            if (dev != null) {
-                apMac = dev.getMacAddress();
-                networkIdOverride = dev.getGwnNetworkId();
-            }
+        final NetworkDevice dev = deviceId != null ? deviceRepository.findById(deviceId).orElse(null) : null;
+        if (dev != null && MeshApMonitorService.isMeshAp(dev)) {
+            // Mesh AP: Grandstream không thấy client của mesh -> đọc thẳng từ thiết bị
+            MeshApSnapshotDto snap = meshApMonitorService.getSnapshot(dev, true);
+            return snap.clients().stream()
+                    .map(c -> new com.wificaptive.gateway.dto.GwnClientDto(
+                            c.mac(), c.ip(), c.hostname(), c.ssid(), dev.getMacAddress(),
+                            dev.getModel(), c.band(), c.rssi(), 0L, 0L, 0L, dev.getGwnLanPort(), false))
+                    .toList();
         }
+        String apMac = dev != null ? dev.getMacAddress() : null;
+        String networkIdOverride = dev != null ? dev.getGwnNetworkId() : null;
         List<com.wificaptive.gateway.dto.GwnClientDto> cloudClients = (networkIdOverride != null && !networkIdOverride.isBlank())
                 ? gwnCloudGatewayAdapter.getConnectedClientsFromCloud(apMac, networkIdOverride)
                 : gwnCloudGatewayAdapter.getConnectedClientsFromCloud(apMac);
@@ -640,10 +633,11 @@ public class NetworkDeviceService {
         // enrich from active Captive Portal sessions + v1.0.0/client/info so admins still see live guests.
         if (guestSessionRepository != null && dev != null && dev.getLocationId() != null) {
             Instant now = Instant.now();
+            Long devLocationId = dev.getLocationId();
             List<com.wificaptive.sessions.entity.GuestSession> activeSessions =
                     guestSessionRepository.findByStatusWithLocation(com.wificaptive.sessions.entity.SessionStatus.AUTHORIZED).stream()
                             .filter(s -> s.getLocation() != null
-                                    && dev.getLocationId().equals(s.getLocation().getId())
+                                    && devLocationId.equals(s.getLocation().getId())
                                     && (s.getExpiresAt() == null || s.getExpiresAt().isAfter(now)))
                             .toList();
             List<com.wificaptive.gateway.dto.GwnClientDto> fallbackClients = new ArrayList<>();
