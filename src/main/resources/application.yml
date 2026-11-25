@@ -112,6 +112,10 @@ app:
     # Lấy on/off tập trung qua GDMS cloud, không cần đăng nhập từng mesh, scale nhiều điểm không thêm phần cứng.
     gwn-status-enabled: ${MESH_GWN_STATUS_ENABLED:true}
     gwn-poll-interval-ms: ${MESH_GWN_POLL_INTERVAL_MS:120000}
+    # Khai cổng LAN GWN của từng mesh để on/off chính xác khi NHIỀU mesh cắm cùng 1 GWN
+    # (device/info không cho biết MAC nào ở cổng nào). Dạng "MAC=cổng,MAC=cổng" theo số in trên vỏ cổng.
+    # Ví dụ: "24:0B:2B:47:2A:22=4,24:0B:2B:46:F8:3A=6". Mesh chưa khai -> giả định 1 mesh/điểm (còn cổng LAN nào up = on).
+    gwn-port-map: ${MESH_GWN_PORT_MAP:}
     timeout-ms: ${MESH_AP_TIMEOUT_MS:5000}
     radius:
       enabled: ${RADIUS_ENABLED:true}
