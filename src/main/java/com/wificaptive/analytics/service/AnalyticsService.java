@@ -135,9 +135,9 @@ public class AnalyticsService {
         long clientWired = 0;
 
         long errorLocs = Math.max(0, totalLocations - activeLocations);
-        // Tổng thiết bị = router (đăng ký) + tổng AP kỳ vọng (4/điểm có router); Lỗi = router off + AP thiếu.
-        long routerTotal = netDevs.stream().filter(d -> "ROUTER".equalsIgnoreCase(d.getDeviceType())).count();
-        long totalDevsCount = routerTotal + apExpected;
+        // "Thiết bị hoạt động" = router ONLINE + AP ONLINE (cổng LAN ON); ghép cặp với "Thiết bị lỗi".
+        // KHÔNG tính client (client là cột riêng). Lỗi = router off + AP thiếu/off.
+        long totalDevsCount = routerOnline + apOnline;
         long errorDevsCount = routerOffline + apOffline;
 
         DeviceTopologySummaryDto topology = new DeviceTopologySummaryDto(
