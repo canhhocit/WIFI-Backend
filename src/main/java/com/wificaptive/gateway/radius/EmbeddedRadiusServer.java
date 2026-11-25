@@ -137,15 +137,9 @@ public class EmbeddedRadiusServer {
                 matchedSession = sessionRepository.findBySessionToken(rawPassword.trim());
             }
 
-            // 2. Try matching active session by client MAC address
+            // 2. Try matching active session by client MAC address using indexed DB query
             if (matchedSession.isEmpty()) {
-                List<GuestSession> activeSessions = sessionRepository.findAll().stream()
-                        .filter(s -> s.getMacAddress() != null
-                                && s.getMacAddress().replaceAll("[:-]", "").equalsIgnoreCase(cleanMac)
-                                && "AUTHORIZED".equalsIgnoreCase(s.getStatus() != null ? s.getStatus().name() : "")
-                                && (s.getExpiresAt() == null || s.getExpiresAt().isAfter(now)))
-                        .toList();
-
+                List<GuestSession> activeSessions = sessionRepository.findActiveAuthorizedByCleanMac(cleanMac.toUpperCase(), now);
                 if (!activeSessions.isEmpty()) {
                     matchedSession = Optional.of(activeSessions.get(0));
                 }
