@@ -55,6 +55,7 @@ public class GovernmentReportPdfService {
     private static final Color AMBER_900 = new Color(128, 88, 42);
     private static final Color AMBER_BG = new Color(255, 252, 245);
     private static final Color AMBER_BORDER = new Color(246, 231, 194);
+    private static final Color ROSE_600 = new Color(225, 29, 72);
 
     public byte[] generatePdfReport(GovernmentReportDto report) {
         try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
@@ -103,7 +104,7 @@ public class GovernmentReportPdfService {
             unitP.setSpacingBefore(1);
             leftHeader.addElement(unitP);
             leftHeader.addElement(buildShortRule(95f, RED_800, Element.ALIGN_LEFT));
-            Paragraph docNo = new Paragraph("Số: 1584/BC-SKHCN-CNTT", headerMetaItalic);
+            Paragraph docNo = new Paragraph("Số: ....../BC-SKHCN", headerMetaItalic);
             docNo.setSpacingBefore(2);
             leftHeader.addElement(docNo);
             headerTable.addCell(leftHeader);
@@ -176,51 +177,28 @@ public class GovernmentReportPdfService {
             kpiRow1.setWidthPercentage(100);
             kpiRow1.setWidths(new float[]{23.5f, 1.5f, 23.5f, 1.5f, 23.5f, 1.5f, 25f});
             kpiRow1.setSpacingBefore(5);
+            kpiRow1.setSpacingAfter(9);
 
             String dataFormatted = formatDataVolume(report.totalDataServedTb());
-            String activeText = report.activeLocations() + " điểm đang phát";
+            String activeText = report.activeLocations() + " điểm Online";
             String subLoc = String.format("Quy hoạch: %,d điểm NVH", report.totalTargetLocations());
 
-            kpiRow1.addCell(buildKpiCard("Quy mô điểm phát", activeText, subLoc, BG_LIGHT, BORDER_LIGHT,
-                    kpiLabelFont, new Font(bfBold, 11.5f, Font.BOLD, SLATE_900), new Font(bfBold, 6.8f, Font.NORMAL, EMERALD_700)));
+            Color availColor = report.networkAvailabilityRate() >= 99.0 ? EMERALD_600
+                    : (report.networkAvailabilityRate() >= 80.0 ? AMBER_700 : ROSE_600);
+
+            kpiRow1.addCell(buildKpiCard("Điểm phát trực tuyến", activeText, subLoc, BG_LIGHT, BORDER_LIGHT,
+                    kpiLabelFont, new Font(bfBold, 11.5f, Font.BOLD, SLATE_900), new Font(bfBold, 6.8f, Font.NORMAL, SLATE_600)));
             kpiRow1.addCell(spacerCell());
-            kpiRow1.addCell(buildKpiCard("Độ khả dụng mạng", formatPercent(report.networkAvailabilityRate()), "Cam kết theo đề án: > 99.0%", BG_LIGHT, BORDER_LIGHT,
-                    kpiLabelFont, new Font(bfBold, 11.5f, Font.BOLD, EMERALD_600), kpiSubFont));
+            kpiRow1.addCell(buildKpiCard("Độ khả dụng mạng", formatPercent(report.networkAvailabilityRate()), "Chỉ tiêu đề án: > 99.0%", BG_LIGHT, BORDER_LIGHT,
+                    kpiLabelFont, new Font(bfBold, 11.5f, Font.BOLD, availColor), kpiSubFont));
             kpiRow1.addCell(spacerCell());
             kpiRow1.addCell(buildKpiCard("Lượt người dân truy cập", String.format("%,d", report.totalCitizenSessions()), "Phiên đăng nhập thành công", BG_LIGHT, BORDER_LIGHT,
                     kpiLabelFont, new Font(bfBold, 11.5f, Font.BOLD, BLUE_600), kpiSubFont));
             kpiRow1.addCell(spacerCell());
-            kpiRow1.addCell(buildKpiCard("Dung lượng dữ liệu", dataFormatted, "Dịch vụ công & đời sống nhân dân", BG_LIGHT, BORDER_LIGHT,
+            kpiRow1.addCell(buildKpiCard("Dung lượng dữ liệu", dataFormatted, "Lưu lượng qua Cổng chào", BG_LIGHT, BORDER_LIGHT,
                     kpiLabelFont, new Font(bfBold, 11.5f, Font.BOLD, INDIGO_600), kpiSubFont));
 
             document.add(kpiRow1);
-
-            PdfPTable kpiRow2 = new PdfPTable(5);
-            kpiRow2.setWidthPercentage(100);
-            kpiRow2.setWidths(new float[]{32f, 2f, 32f, 2f, 32f});
-            kpiRow2.setSpacingBefore(6);
-            kpiRow2.setSpacingAfter(9);
-
-            kpiRow2.addCell(buildKpiCard("Mức độ hài lòng của nhân dân", formatPercent(report.citizenSatisfactionRate()),
-                    "Đánh giá Tốt / Rất tốt qua khảo sát trực tuyến", EMERALD_BG, EMERALD_BORDER,
-                    new Font(bfRegular, 7.5f, Font.NORMAL, EMERALD_900),
-                    new Font(bfBold, 11.5f, Font.BOLD, EMERALD_700),
-                    new Font(bfRegular, 6.8f, Font.NORMAL, EMERALD_900)));
-            kpiRow2.addCell(spacerCell());
-            kpiRow2.addCell(buildKpiCard("Tuân thủ cam kết SLA Viễn thông", formatPercent(report.telecomSlaComplianceRate()),
-                    "Tổng " + report.totalIncidentsReported() + " sự cố kỹ thuật ghi nhận", BLUE_BG, BLUE_BORDER,
-                    new Font(bfRegular, 7.5f, Font.NORMAL, BLUE_900),
-                    new Font(bfBold, 11.5f, Font.BOLD, BLUE_700),
-                    new Font(bfRegular, 6.8f, Font.NORMAL, BLUE_900)));
-            kpiRow2.addCell(spacerCell());
-            kpiRow2.addCell(buildKpiCard("Thời gian phục hồi trung bình (MTTR)",
-                    report.averageResolutionHours() > 0 ? String.format("%.1f Giờ", report.averageResolutionHours()) : "0.0 Giờ",
-                    "Hạn mức cam kết tối đa: 4h - 8h", AMBER_BG, AMBER_BORDER,
-                    new Font(bfRegular, 7.5f, Font.NORMAL, AMBER_900),
-                    new Font(bfBold, 11.5f, Font.BOLD, AMBER_700),
-                    new Font(bfRegular, 6.8f, Font.NORMAL, AMBER_900)));
-
-            document.add(kpiRow2);
 
             // 4. Phần II: Bảng chi tiết 15 quận / huyện (Đủ 9 cột, header xám nhạt thanh lịch giống web)
             document.add(buildSectionHeading("II. CHI TIẾT TỔNG HỢP THEO 15 QUẬN / HUYỆN THÀNH PHỐ HẢI PHÒNG", sectionTitleFont));
@@ -281,7 +259,10 @@ public class GovernmentReportPdfService {
             dataTable.addCell(createTotalCell(String.format("%,d", report.totalCitizenSessions() > 0 ? report.totalCitizenSessions() : totalSessions), cellBlue, Element.ALIGN_RIGHT));
             dataTable.addCell(createTotalCell(String.format("%.2f", totalDataGb), cellBold, Element.ALIGN_RIGHT));
             dataTable.addCell(createTotalCell(String.valueOf(report.totalIncidentsReported() > 0 ? report.totalIncidentsReported() : totalIncidents), cellBold, Element.ALIGN_CENTER));
-            dataTable.addCell(createTotalCell(formatPercent(report.telecomSlaComplianceRate()), cellEmerald, Element.ALIGN_CENTER));
+            Color slaColor = report.telecomSlaComplianceRate() >= 95.0 ? EMERALD_700
+                    : (report.telecomSlaComplianceRate() >= 80.0 ? AMBER_700 : ROSE_600);
+            Font totalSlaFont = new Font(bfBold, 7.3f, Font.BOLD, slaColor);
+            dataTable.addCell(createTotalCell(formatPercent(report.telecomSlaComplianceRate()), totalSlaFont, Element.ALIGN_CENTER));
 
             document.add(dataTable);
 
@@ -295,19 +276,24 @@ public class GovernmentReportPdfService {
             p3Cell.setBorderWidth(0.7f);
             p3Cell.setPadding(7);
 
-            Paragraph p3Title = new Paragraph("III. ĐÁNH GIÁ CÔNG TÁC BẢO ĐẢM AN TOÀN THÔNG TIN & TRUYỀN THÔNG SỐ",
+            Paragraph p3Title = new Paragraph("III. ĐÁNH GIÁ HIỆN TRẠNG VẬN HÀNH & AN TOÀN THÔNG TIN",
                     new Font(bfBold, 8f, Font.BOLD, SLATE_900));
             p3Title.setSpacingAfter(3);
             p3Cell.addElement(p3Title);
 
-            p3Cell.addElement(buildBullet("Cổng chào số chính quyền: ",
-                    "Phát sóng đồng bộ thông điệp chuyển đổi số, liên kết Cổng Dịch vụ công thành phố Hải Phòng và các tiện ích số thiết thực cho nhân dân.",
+            p3Cell.addElement(buildBullet("Cổng chào số & Dịch vụ công: ",
+                    "Cổng chào điện tử phục vụ truyền thông chuyển đổi số và điều hướng trực tiếp tới Cổng Dịch vụ công thành phố Hải Phòng tại các điểm đã lắp đặt thiết bị.",
                     noteBoldFont, noteTextFont));
-            p3Cell.addElement(buildBullet("An toàn an ninh thông tin: ",
-                    "Hệ thống vận hành tuân thủ quy chuẩn ATTT Cấp độ 3 (Nghị định 85/2016/NĐ-CP); tích hợp bộ lọc tên miền độc hại DNS và nhật ký truy cập lưu trữ pháp lý 12 tháng theo Luật An ninh mạng.",
+            p3Cell.addElement(buildBullet("An toàn thông tin & Lưu vết pháp lý: ",
+                    "Hệ thống áp dụng phân quyền 3 cấp, kiểm soát tên miền DNS và lưu trữ nhật ký phiên truy cập 12 tháng phục vụ công tác kiểm tra, giám sát theo quy định.",
                     noteBoldFont, noteTextFont));
-            p3Cell.addElement(buildBullet("Cam kết chất lượng (SLA): ",
-                    "Liên danh nhà thầu duy trì kỹ thuật thường trực 24/7, tỷ lệ sẵn sàng mạng luôn duy trì đạt chỉ tiêu cam kết với UBND thành phố.",
+            String slaSummaryText = (report.networkAvailabilityRate() >= 99.0 && report.telecomSlaComplianceRate() >= 95.0)
+                    ? String.format("Hệ thống vận hành ổn định, tỷ lệ sẵn sàng mạng đạt %s và tỷ lệ xử lý sự cố đúng hạn SLA đạt %s (MTTR: %.1f giờ).",
+                            formatPercent(report.networkAvailabilityRate()), formatPercent(report.telecomSlaComplianceRate()), report.averageResolutionHours())
+                    : String.format("Ghi nhận %d điểm đang phát sóng trực tuyến (độ khả dụng %s trên tổng số điểm đã khai báo); tiếp nhận %d sự cố, tỷ lệ xử lý đúng hạn SLA đạt %s (MTTR: %.1f giờ). Đề nghị các đơn vị đẩy nhanh tiến độ đấu nối thiết bị tại các điểm còn lại và xử lý dứt điểm các phiếu sự cố quá hạn.",
+                            report.activeLocations(), formatPercent(report.networkAvailabilityRate()), report.totalIncidentsReported(), formatPercent(report.telecomSlaComplianceRate()), report.averageResolutionHours());
+            p3Cell.addElement(buildBullet("Hiện trạng kết nối & Tuân thủ SLA trong kỳ: ",
+                    slaSummaryText,
                     noteBoldFont, noteTextFont));
 
             part3Box.addCell(p3Cell);

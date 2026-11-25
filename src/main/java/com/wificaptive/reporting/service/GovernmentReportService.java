@@ -1,6 +1,8 @@
 package com.wificaptive.reporting.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.wificaptive.devices.entity.NetworkDevice;
+import com.wificaptive.devices.repository.NetworkDeviceRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wificaptive.geography.entity.AdministrativeUnit;
 import com.wificaptive.geography.repository.AdministrativeUnitRepository;
@@ -64,6 +66,9 @@ public class GovernmentReportService {
     private final SurveyResponseRepository surveyResponseRepository;
     private final SurveyQuestionRepository surveyQuestionRepository;
     private final ObjectMapper objectMapper;
+
+    @Autowired(required = false)
+    private NetworkDeviceRepository networkDeviceRepository;
 
     public GovernmentReportService(
             WifiLocationRepository locationRepository,
@@ -172,16 +177,29 @@ public class GovernmentReportService {
             deployedLocations = Collections.emptyList();
         }
         int deployedCount = deployedLocations.size();
-        int activeLocations = (int) deployedLocations.stream().filter(WifiLocation::isActive).count();
+        Set<Long> onlineDeviceLocationIds = null;
+        if (networkDeviceRepository != null) {
+            onlineDeviceLocationIds = networkDeviceRepository.findAll().stream()
+                    .filter(d -> d.getLocationId() != null && "ONLINE".equalsIgnoreCase(d.getStatus()))
+                    .filter(d -> "ROUTER".equalsIgnoreCase(d.getDeviceType())
+                            || "ACCESS_POINT".equalsIgnoreCase(d.getDeviceType())
+                            || "AP".equalsIgnoreCase(d.getDeviceType()))
+                    .map(NetworkDevice::getLocationId)
+                    .collect(Collectors.toSet());
+        }
+        final Set<Long> liveOnlineIds = onlineDeviceLocationIds;
+        int activeLocations = (int) deployedLocations.stream()
+                .filter(loc -> loc.isActive() && (liveOnlineIds == null || liveOnlineIds.contains(loc.getId())))
+                .count();
         if (deployedCount == 0 && activeLocations == 0) {
             long totalFromCount = locationRepository.countByDeletedFalse();
-            long activeFromCount = locationRepository.countByActiveTrueAndDeletedFalse();
+            long activeFromCount = liveOnlineIds == null ? locationRepository.countByActiveTrueAndDeletedFalse() : 0L;
             deployedCount = (int) totalFromCount;
             activeLocations = (int) activeFromCount;
         }
 
         double availabilityRate = deployedCount > 0
-                ? ((double) activeLocations / deployedCount) * 100.0
+                ? Math.round((((double) activeLocations / deployedCount) * 100.0) * 10.0) / 10.0
                 : 0.0;
 
         // 3. Số lượt truy cập & dung lượng thực tế trong kỳ báo cáo từ guest_sessions
@@ -269,7 +287,9 @@ public class GovernmentReportService {
                         .toList();
 
                 int distDeployed = districtLocs.size();
-                int distOnline = (int) districtLocs.stream().filter(WifiLocation::isActive).count();
+                int distOnline = (int) districtLocs.stream()
+                        .filter(loc -> loc.isActive() && (liveOnlineIds == null || liveOnlineIds.contains(loc.getId())))
+                        .count();
                 double distAvailability = distDeployed > 0
                         ? ((double) distOnline / distDeployed) * 100.0
                         : 0.0;
@@ -392,7 +412,9 @@ public class GovernmentReportService {
         String periodLabel = current.reportPeriod();
 
         String reportCode = "BC-HP-" + System.currentTimeMillis() % 1000000;
-        String title = "Báo cáo vận hành Wi-Fi 1.584 Nhà văn hóa (" + periodLabel + ")";
+        String title = (req.getTitle() != null && !req.getTitle().isBlank())
+                ? req.getTitle().trim()
+                : "Báo cáo vận hành Wi-Fi 1.584 Nhà văn hóa (" + periodLabel + ")";
 
         GovernmentReportHistory entity = new GovernmentReportHistory();
         entity.setReportCode(reportCode);
