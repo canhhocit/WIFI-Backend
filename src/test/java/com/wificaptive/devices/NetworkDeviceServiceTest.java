@@ -204,7 +204,7 @@ class NetworkDeviceServiceTest {
 
         when(gwnCloudGatewayAdapter.fetchDevicesFromCloud()).thenReturn(List.of(routerDto, apDto));
         when(deviceRepository.findByMacAddress(any())).thenReturn(Optional.empty());
-        when(deviceRepository.findAll()).thenReturn(List.of());
+        when(deviceRepository.findByCleanMac(any())).thenReturn(Optional.empty());
         when(deviceRepository.save(any(NetworkDevice.class))).thenAnswer(inv -> inv.getArgument(0));
 
         DeviceSyncSummaryDto summary = deviceService.syncFromGrandstream("admin");
