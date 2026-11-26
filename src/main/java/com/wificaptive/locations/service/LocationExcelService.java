@@ -7,6 +7,7 @@ import com.wificaptive.devices.entity.NetworkDevice;
 import com.wificaptive.devices.repository.NetworkDeviceRepository;
 import com.wificaptive.geography.entity.AdministrativeUnit;
 import com.wificaptive.geography.repository.AdministrativeUnitRepository;
+import com.wificaptive.geography.service.AdminScopeService;
 import com.wificaptive.locations.dto.excel.ExcelImportSummaryDto;
 import com.wificaptive.locations.dto.excel.ExcelRowValidationResult;
 import com.wificaptive.locations.dto.excel.LocationImportRowData;
@@ -14,6 +15,7 @@ import com.wificaptive.locations.entity.WifiLocation;
 import com.wificaptive.locations.repository.WifiLocationRepository;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,10 +37,14 @@ public class LocationExcelService {
     private final NetworkDeviceRepository deviceRepository;
     private final AuditService auditService;
 
+    @Autowired(required = false)
+    private AdminScopeService adminScopeService;
+
     // In-memory cache for validated import sessions (SessionId -> List<LocationImportRowData>)
     private final Map<String, List<LocationImportRowData>> validRowsCache = new ConcurrentHashMap<>();
     private final Map<String, List<ExcelRowValidationResult>> errorRowsCache = new ConcurrentHashMap<>();
 
+    @Autowired
     public LocationExcelService(WifiLocationRepository locationRepository,
                                 AdministrativeUnitRepository adminUnitRepository,
                                 NetworkDeviceRepository deviceRepository,
@@ -106,35 +112,47 @@ public class LocationExcelService {
                 if (code == null || code.isBlank()) result.addError("Mã điểm phát sóng không được để trống");
                 if (name == null || name.isBlank()) result.addError("Tên nhà văn hóa không được để trống");
                 if (slug == null || slug.isBlank()) {
-                    if (code != null) data.setSlug(code.toLowerCase().replace("_", "-"));
+                    if (code != null && !code.isBlank()) data.setSlug(code.trim().toLowerCase().replace("_", "-"));
                     else result.addError("Slug không được để trống");
                 }
                 if (adminUnitCode == null || adminUnitCode.isBlank()) result.addError("Mã đơn vị địa bàn không được để trống");
 
                 // Criteria 2: Uniqueness
                 if (code != null && !code.isBlank()) {
-                    if (seenCodesInFile.contains(code.toUpperCase())) {
+                    String normalizedCode = code.trim().toUpperCase();
+                    if (seenCodesInFile.contains(normalizedCode)) {
                         result.addError("Mã điểm bị trùng lặp trong chính file Excel: " + code);
-                    } else if (locationRepository.existsByLocationCodeAndDeletedFalse(code.toUpperCase())) {
+                    } else if (locationRepository.existsByLocationCodeAndDeletedFalse(normalizedCode)) {
                         result.addError("Mã điểm đã tồn tại trong cơ sở dữ liệu: " + code);
                     }
-                    seenCodesInFile.add(code.toUpperCase());
+                    seenCodesInFile.add(normalizedCode);
                 }
 
-                if (data.getSlug() != null) {
-                    if (seenSlugsInFile.contains(data.getSlug().toLowerCase())) {
+                if (data.getSlug() != null && !data.getSlug().isBlank()) {
+                    String normalizedSlug = data.getSlug().trim().toLowerCase();
+                    if (seenSlugsInFile.contains(normalizedSlug)) {
                         result.addError("Slug bị trùng lặp trong file: " + data.getSlug());
-                    } else if (locationRepository.existsBySlugAndDeletedFalse(data.getSlug().toLowerCase())) {
+                    } else if (locationRepository.existsBySlugAndDeletedFalse(normalizedSlug)) {
                         result.addError("Slug đã tồn tại trong CSDL: " + data.getSlug());
                     }
-                    seenSlugsInFile.add(data.getSlug().toLowerCase());
+                    seenSlugsInFile.add(normalizedSlug);
                 }
 
-                // Criteria 3: Administrative Unit Integrity
+                // Criteria 3: Administrative Unit Integrity (2-tier: Thành phố -> Phường/Xã/Đặc khu)
+                Set<Long> scopedUnitIds = adminScopeService != null ? adminScopeService.getCurrentUserScopedUnitIds() : null;
                 if (adminUnitCode != null && !adminUnitCode.isBlank()) {
                     Optional<AdministrativeUnit> unitOpt = adminUnitRepository.findByCode(adminUnitCode.trim().toUpperCase());
                     if (unitOpt.isEmpty()) {
                         result.addError("Mã địa bàn không tồn tại trong Cây địa bàn Hải Phòng: " + adminUnitCode);
+                    } else {
+                        AdministrativeUnit unit = unitOpt.get();
+                        if (!"ACTIVE".equalsIgnoreCase(unit.getStatus())) {
+                            result.addError("Đơn vị địa bàn không còn hiệu lực: " + adminUnitCode);
+                        } else if (unit.getLevel() != null && unit.getLevel() < 2) {
+                            result.addError("Vui lòng dùng mã địa bàn cấp Phường / Xã / Đặc khu thay vì cấp Thành phố: " + adminUnitCode);
+                        } else if (scopedUnitIds != null && !scopedUnitIds.contains(unit.getId())) {
+                            result.addError("Mã địa bàn không thuộc phạm vi quản lý của tài khoản: " + adminUnitCode);
+                        }
                     }
                 }
 
@@ -203,13 +221,14 @@ public class LocationExcelService {
 
         int count = 0;
         for (LocationImportRowData row : validRows) {
-            AdministrativeUnit unit = adminUnitRepository.findByCode(row.getAdminUnitCode().toUpperCase())
-                    .orElse(null);
+            String normalizedUnitCode = row.getAdminUnitCode() != null ? row.getAdminUnitCode().trim().toUpperCase() : "";
+            AdministrativeUnit unit = adminUnitRepository.findByCode(normalizedUnitCode)
+                    .orElseThrow(() -> new BadRequestException("Không tìm thấy đơn vị địa bàn: " + row.getAdminUnitCode()));
 
             WifiLocation loc = new WifiLocation();
-            loc.setLocationCode(row.getCode().toUpperCase());
-            loc.setName(row.getName());
-            loc.setSlug(row.getSlug().toLowerCase());
+            loc.setLocationCode(row.getCode().trim().toUpperCase());
+            loc.setName(row.getName().trim());
+            loc.setSlug(row.getSlug().trim().toLowerCase());
             loc.setAdminUnit(unit);
             loc.setAddress(row.getAddress());
             loc.setLatitude(row.getLatitude());
@@ -272,11 +291,11 @@ public class LocationExcelService {
 
     public byte[] generateTemplate() {
         try (Workbook wb = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            Sheet sheet = wb.createSheet("1584_Diem_WiFi_HaiPhong");
+            Sheet sheet = wb.createSheet("Diem_WiFi_HaiPhong");
 
             Row header = sheet.createRow(0);
             String[] headers = {
-                    "Mã điểm", "Tên nhà văn hóa", "Slug (viết thường)", "Mã địa bàn (Cấp 3)",
+                    "Mã điểm", "Tên nhà văn hóa", "Slug (viết thường)", "Mã địa bàn (Phường/Xã/Đặc khu)",
                     "Địa chỉ chi tiết", "Vĩ độ (Latitude)", "Kinh độ (Longitude)", "Nhà mạng (ISP)",
                     "Mã đường truyền", "Người phụ trách", "SĐT phụ trách", "MAC Router", "MAC AP"
             };
@@ -290,14 +309,14 @@ public class LocationExcelService {
                 Cell cell = header.createCell(i);
                 cell.setCellValue(headers[i]);
                 cell.setCellStyle(headerStyle);
-                sheet.setColumnWidth(i, 20 * 256);
+                sheet.setColumnWidth(i, 24 * 256);
             }
 
-            // Sample rows
+            // Sample rows using post-merger 2-tier Hải Phòng administrative unit codes (114 Phường/Xã/Đặc khu)
             Object[][] sampleData = {
-                    {"HP-HB-NVH01", "Nhà văn hóa Tổ dân phố số 1", "hp-hb-nvh01", "HP_HB_HVTHU", "Số 15 Hoàng Văn Thụ, Hồng Bàng", 20.865139, 106.683830, "Viettel", "HP-VIETTEL-0012", "Nguyễn Văn An", "0912345678", "00:1A:2B:3C:4D:5E", "00:1A:2B:3C:4D:5F"},
-                    {"HP-NQ-NVH02", "Nhà văn hóa Khu dân cư Máy Tơ", "hp-nq-nvh02", "HP_NQ_MAYTO", "Số 42 Máy Tơ, Ngô Quyền", 20.859210, 106.691230, "Viettel", "HP-VT-0045", "Trần Thị Bình", "0987654321", "00:1A:2B:3C:6A:11", "00:1A:2B:3C:6A:12"},
-                    {"HP-CH-NVH03", "Nhà văn hóa Thị trấn Cát Bà", "hp-ch-nvh03", "HP_CH_CATBA", "Tổ dân phố 2, Cát Bà, Cát Hải", 20.725830, 107.049440, "Viettel", "HP-VIETTEL-0089", "Lê Văn Cường", "0905123456", "00:1A:2B:3C:7B:21", "00:1A:2B:3C:7B:22"}
+                    {"HP-HB-NVH01", "Nhà văn hóa Tổ dân phố số 1", "hp-hb-nvh01", "HP_P_HONGBANG", "Số 15 Hoàng Văn Thụ, Phường Hồng Bàng", 20.865139, 106.683830, "Viettel", "HP-VIETTEL-0012", "Nguyễn Văn An", "0912345678", "00:1A:2B:3C:4D:5E", "00:1A:2B:3C:4D:5F"},
+                    {"HP-NQ-NVH02", "Nhà văn hóa Khu dân cư Máy Tơ", "hp-nq-nvh02", "HP_P_NGOQUYEN", "Số 42 Máy Tơ, Phường Ngô Quyền", 20.859210, 106.691230, "Viettel", "HP-VT-0045", "Trần Thị Bình", "0987654321", "00:1A:2B:3C:6A:11", "00:1A:2B:3C:6A:12"},
+                    {"HP-CH-NVH03", "Nhà văn hóa Đặc khu Cát Hải", "hp-ch-nvh03", "HP_DZ_CATHAI", "Tổ dân phố 2, Đặc khu Cát Hải", 20.725830, 107.049440, "Viettel", "HP-VIETTEL-0089", "Lê Văn Cường", "0905123456", "00:1A:2B:3C:7B:21", "00:1A:2B:3C:7B:22"}
             };
 
             for (int r = 0; r < sampleData.length; r++) {
@@ -347,10 +366,20 @@ public class LocationExcelService {
         }
     }
 
+    @Transactional(readOnly = true)
     public byte[] exportAllLocations() {
-        List<WifiLocation> locations = locationRepository.findByDeletedFalse(org.springframework.data.domain.Pageable.unpaged()).getContent();
+        Set<Long> scopedUnitIds = adminScopeService != null ? adminScopeService.getCurrentUserScopedUnitIds() : null;
+        List<WifiLocation> locations;
+        if (scopedUnitIds != null) {
+            locations = scopedUnitIds.isEmpty()
+                    ? List.of()
+                    : locationRepository.findByAdminUnit_IdInAndDeletedFalse(scopedUnitIds);
+        } else {
+            locations = locationRepository.findAllWithAdminUnitAndDeletedFalse();
+        }
+
         try (Workbook wb = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            Sheet sheet = wb.createSheet("Danh_sach_1584_Diem_WiFi");
+            Sheet sheet = wb.createSheet("Danh_sach_Diem_WiFi");
 
             Row header = sheet.createRow(0);
             String[] headers = {
@@ -359,17 +388,24 @@ public class LocationExcelService {
                     "Người phụ trách", "Số điện thoại"
             };
 
+            CellStyle headerStyle = wb.createCellStyle();
+            Font font = wb.createFont();
+            font.setBold(true);
+            headerStyle.setFont(font);
+
             for (int i = 0; i < headers.length; i++) {
                 Cell cell = header.createCell(i);
                 cell.setCellValue(headers[i]);
+                cell.setCellStyle(headerStyle);
+                sheet.setColumnWidth(i, 22 * 256);
             }
 
             int r = 1;
             for (WifiLocation loc : locations) {
                 Row row = sheet.createRow(r++);
                 row.createCell(0).setCellValue(loc.getLocationCode() != null ? loc.getLocationCode() : "");
-                row.createCell(1).setCellValue(loc.getName());
-                row.createCell(2).setCellValue(loc.getSlug());
+                row.createCell(1).setCellValue(loc.getName() != null ? loc.getName() : "");
+                row.createCell(2).setCellValue(loc.getSlug() != null ? loc.getSlug() : "");
                 row.createCell(3).setCellValue(loc.getAdminUnit() != null ? loc.getAdminUnit().getName() : "");
                 row.createCell(4).setCellValue(loc.getAddress() != null ? loc.getAddress() : "");
                 row.createCell(5).setCellValue(loc.getLatitude() != null ? loc.getLatitude() : 0.0);
@@ -389,30 +425,36 @@ public class LocationExcelService {
     }
 
     private boolean isRowEmpty(Row row) {
+        if (row.getFirstCellNum() < 0) return true;
+        DataFormatter formatter = new DataFormatter();
         for (int c = row.getFirstCellNum(); c < row.getLastCellNum(); c++) {
             Cell cell = row.getCell(c);
-            if (cell != null && cell.getCellType() != CellType.BLANK) return false;
+            if (cell != null && cell.getCellType() != CellType.BLANK && !formatter.formatCellValue(cell).isBlank()) {
+                return false;
+            }
         }
         return true;
     }
 
     private String getCellString(Row row, int index) {
         Cell cell = row.getCell(index);
-        if (cell == null) return null;
+        if (cell == null || cell.getCellType() == CellType.BLANK) return null;
         if (cell.getCellType() == CellType.STRING) return cell.getStringCellValue().trim();
         if (cell.getCellType() == CellType.NUMERIC) return String.valueOf((long) cell.getNumericCellValue());
-        return null;
+        String formatted = new DataFormatter().formatCellValue(cell).trim();
+        return formatted.isEmpty() ? null : formatted;
     }
 
     private Double getCellDouble(Row row, int index) {
         Cell cell = row.getCell(index);
-        if (cell == null) return null;
+        if (cell == null || cell.getCellType() == CellType.BLANK) return null;
         if (cell.getCellType() == CellType.NUMERIC) return cell.getNumericCellValue();
-        if (cell.getCellType() == CellType.STRING) {
-            try {
-                return Double.parseDouble(cell.getStringCellValue().trim());
-            } catch (NumberFormatException ignored) {}
+        String raw = new DataFormatter().formatCellValue(cell).trim().replace(',', '.');
+        if (raw.isEmpty()) return null;
+        try {
+            return Double.parseDouble(raw);
+        } catch (NumberFormatException ignored) {
+            return null;
         }
-        return null;
     }
 }
