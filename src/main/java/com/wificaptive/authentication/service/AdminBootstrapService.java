@@ -3,8 +3,10 @@ package com.wificaptive.authentication.service;
 import com.wificaptive.authentication.entity.AdminRole;
 import com.wificaptive.authentication.entity.AdminUser;
 import com.wificaptive.authentication.repository.AdminUserRepository;
+import com.wificaptive.geography.repository.AdministrativeUnitRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -18,6 +20,9 @@ public class AdminBootstrapService implements CommandLineRunner {
 
     private final AdminUserRepository adminUserRepository;
     private final PasswordEncoder passwordEncoder;
+
+    @Autowired(required = false)
+    private AdministrativeUnitRepository administrativeUnitRepository;
 
     @Value("${app.bootstrap.admin.enabled:true}")
     private boolean bootstrapEnabled;
@@ -54,7 +59,10 @@ public class AdminBootstrapService implements CommandLineRunner {
         bootstrapOrUpdateAccount("sotttt_admin", "password123", "sotttt@haiphong.gov.vn", "Cán bộ Sở KH&CN Hải Phòng", AdminRole.ROLE_SOTTTT_ADMIN, "0901234567", null);
 
         // 3. UBND Phường Hồng Bàng (hongbang_officer / password123)
-        bootstrapOrUpdateAccount("hongbang_officer", "password123", "canbo.hongbang@haiphong.gov.vn", "Cán bộ UBND Phường Hồng Bàng", AdminRole.ROLE_COMMUNE_OFFICER, "0912345678", 2L);
+        Long hongBangUnitId = administrativeUnitRepository != null
+                ? administrativeUnitRepository.findByCode("HP_P_HONGBANG").map(u -> u.getId()).orElse(2L)
+                : 2L;
+        bootstrapOrUpdateAccount("hongbang_officer", "password123", "canbo.hongbang@haiphong.gov.vn", "Cán bộ UBND Phường Hồng Bàng", AdminRole.ROLE_COMMUNE_OFFICER, "0912345678", hongBangUnitId);
 
         // (Đã bỏ tài khoản Kỹ sư Viễn thông viettel_tech01 theo mô hình 3 cấp tài khoản)
     }

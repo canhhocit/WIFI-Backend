@@ -39,25 +39,6 @@ public class GovernmentReportService {
 
     private static final ZoneId VN_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
 
-    // Target planned NVH baseline across 15 districts of Hai Phong (Sum = 1,584 points)
-    private static final Map<String, Integer> DISTRICT_PLANNED_NVH = Map.ofEntries(
-            Map.entry("HP_TN", 320), // Huyện Thủy Nguyên
-            Map.entry("HP_VB", 240), // Huyện Vĩnh Bảo
-            Map.entry("HP_TL", 175), // Huyện Tiên Lãng
-            Map.entry("HP_AD", 125), // Huyện An Dương
-            Map.entry("HP_KT", 118), // Huyện Kiến Thụy
-            Map.entry("HP_AL", 110), // Huyện An Lão
-            Map.entry("HP_LC", 114), // Quận Lê Chân
-            Map.entry("HP_NQ", 82),  // Quận Ngô Quyền
-            Map.entry("HP_KA", 78),  // Quận Kiến An
-            Map.entry("HP_HA", 72),  // Quận Hải An
-            Map.entry("HP_HB", 42),  // Quận Hồng Bàng
-            Map.entry("HP_DK", 44),  // Quận Dương Kinh
-            Map.entry("HP_DS", 38),  // Quận Đồ Sơn
-            Map.entry("HP_CH", 23),  // Huyện Cát Hải
-            Map.entry("HP_BLV", 3)   // Huyện Bạch Long Vĩ
-    );
-
     private final WifiLocationRepository locationRepository;
     private final GuestSessionRepository sessionRepository;
     private final IncidentTicketRepository incidentRepository;
@@ -253,68 +234,66 @@ public class GovernmentReportService {
             }
         }
 
-        // 7. Lấy danh sách 15 Quận / Huyện cấp 2 của TP. Hải Phòng
-        List<AdministrativeUnit> districts = adminUnitRepository.findByLevelOrderByCodeAsc(2);
-        List<DistrictStatDto> districtStats = new ArrayList<>();
+        // 7. Lấy toàn bộ đơn vị Cấp 2 (114 Phường / Xã / Đặc khu) của TP. Hải Phòng
+        List<AdministrativeUnit> units = adminUnitRepository.findByLevelOrderByCodeAsc(2).stream()
+                .filter(u -> u != null && (u.getStatus() == null || "ACTIVE".equalsIgnoreCase(u.getStatus())))
+                .toList();
+        List<DistrictStatDto> unitStats = new ArrayList<>();
 
-        if (districts.isEmpty()) {
-            districtStats.add(new DistrictStatDto(1L, "Toàn Thành Phố", targetTotalLocations, activeLocations, Math.round(availabilityRate * 10.0) / 10.0, totalSessions, Math.round((totalBytes / (1024.0 * 1024.0 * 1024.0)) * 100.0) / 100.0, totalIncidents, Math.round(slaCompliance * 10.0) / 10.0));
+        if (units.isEmpty()) {
+            unitStats.add(new DistrictStatDto(1L, "Toàn Thành Phố", deployedCount, activeLocations, Math.round(availabilityRate * 10.0) / 10.0, totalSessions, Math.round((totalBytes / (1024.0 * 1024.0 * 1024.0)) * 100.0) / 100.0, totalIncidents, Math.round(slaCompliance * 10.0) / 10.0));
         } else {
-            for (AdministrativeUnit d : districts) {
-                int plannedNvh = (d != null && d.getCode() != null)
-                        ? DISTRICT_PLANNED_NVH.getOrDefault(d.getCode(), 105)
-                        : 105;
-
-                // Lọc các điểm thuộc quận/huyện này
-                List<WifiLocation> districtLocs = deployedLocations.stream()
+            for (AdministrativeUnit u : units) {
+                // Lọc các điểm phát trực thuộc Phường / Xã / Đặc khu này
+                List<WifiLocation> unitLocs = deployedLocations.stream()
                         .filter(loc -> {
                             if (loc.getAdminUnit() == null) return false;
                             Integer unitLevel = loc.getAdminUnit().getLevel();
                             if (Integer.valueOf(2).equals(unitLevel)) {
-                                return Objects.equals(loc.getAdminUnit().getId(), d.getId());
+                                return Objects.equals(loc.getAdminUnit().getId(), u.getId());
                             }
                             if (Integer.valueOf(3).equals(unitLevel) && loc.getAdminUnit().getParent() != null) {
-                                return Objects.equals(loc.getAdminUnit().getParent().getId(), d.getId());
+                                return Objects.equals(loc.getAdminUnit().getParent().getId(), u.getId());
                             }
                             return false;
                         })
                         .toList();
 
-                int distDeployed = districtLocs.size();
-                int distOnline = (int) districtLocs.stream()
+                int unitDeployed = unitLocs.size();
+                int unitOnline = (int) unitLocs.stream()
                         .filter(loc -> loc.isActive() && (liveOnlineIds == null || liveOnlineIds.contains(loc.getId())))
                         .count();
-                double distAvailability = distDeployed > 0
-                        ? ((double) distOnline / distDeployed) * 100.0
+                double unitAvailability = unitDeployed > 0
+                        ? ((double) unitOnline / unitDeployed) * 100.0
                         : 0.0;
 
-                long distSessions = 0L;
-                long distBytes = 0L;
-                int distIncidents = 0;
-                int distBreached = 0;
+                long unitSessions = 0L;
+                long unitBytes = 0L;
+                int unitIncidents = 0;
+                int unitBreached = 0;
 
-                for (WifiLocation loc : districtLocs) {
-                    distSessions += locationSessionsMap.getOrDefault(loc.getId(), 0L);
-                    distBytes += locationBytesMap.getOrDefault(loc.getId(), 0L);
-                    distIncidents += locationIncidentsMap.getOrDefault(loc.getId(), 0);
-                    distBreached += locationBreachedMap.getOrDefault(loc.getId(), 0);
+                for (WifiLocation loc : unitLocs) {
+                    unitSessions += locationSessionsMap.getOrDefault(loc.getId(), 0L);
+                    unitBytes += locationBytesMap.getOrDefault(loc.getId(), 0L);
+                    unitIncidents += locationIncidentsMap.getOrDefault(loc.getId(), 0);
+                    unitBreached += locationBreachedMap.getOrDefault(loc.getId(), 0);
                 }
 
-                double distDataGb = Math.round((distBytes / (1024.0 * 1024.0 * 1024.0)) * 100.0) / 100.0;
-                double distSla = distIncidents > 0
-                        ? ((double) (distIncidents - distBreached) / distIncidents) * 100.0
-                        : (distDeployed > 0 ? 100.0 : 0.0);
+                double unitDataGb = Math.round((unitBytes / (1024.0 * 1024.0 * 1024.0)) * 100.0) / 100.0;
+                double unitSla = unitIncidents > 0
+                        ? ((double) (unitIncidents - unitBreached) / unitIncidents) * 100.0
+                        : (unitDeployed > 0 ? 100.0 : 0.0);
 
-                districtStats.add(new DistrictStatDto(
-                        d.getId(),
-                        d.getName(),
-                        plannedNvh,
-                        distOnline,
-                        Math.round(distAvailability * 10.0) / 10.0,
-                        distSessions,
-                        distDataGb,
-                        distIncidents,
-                        Math.round(distSla * 10.0) / 10.0
+                unitStats.add(new DistrictStatDto(
+                        u.getId(),
+                        u.getName(),
+                        unitDeployed,
+                        unitOnline,
+                        Math.round(unitAvailability * 10.0) / 10.0,
+                        unitSessions,
+                        unitDataGb,
+                        unitIncidents,
+                        Math.round(unitSla * 10.0) / 10.0
                 ));
             }
         }
@@ -333,7 +312,7 @@ public class GovernmentReportService {
                 totalIncidents,
                 Math.round(slaCompliance * 10.0) / 10.0,
                 avgMttrHours,
-                districtStats
+                unitStats
         );
     }
 
@@ -470,8 +449,9 @@ public class GovernmentReportService {
         sb.append("Tỷ lệ tuân thủ cam kết SLA viễn thông:,").append(report.telecomSlaComplianceRate()).append("%\n");
         sb.append("Thời gian phục hồi sự cố trung bình (MTTR):,").append(report.averageResolutionHours()).append(" giờ\n\n");
 
-        sb.append("CHI TIẾT PHÂN BỔ THEO 15 QUẬN / HUYỆN TP HẢI PHÒNG:\n");
-        sb.append("STT,Quận/Huyện,Tổng điểm NVH,Online,Tỷ lệ khả dụng (%),Lượt truy cập,Dung lượng (GB),Sự cố,Đạt SLA (%)\n");
+        int unitCount = report.districtBreakdown() != null ? report.districtBreakdown().size() : 0;
+        sb.append("CHI TIẾT PHÂN BỔ THEO ").append(unitCount).append(" PHƯỜNG / XÃ / ĐẶC KHU TP HẢI PHÒNG:\n");
+        sb.append("STT,Phường / Xã / Đặc khu,Số điểm phát,Online,Tỷ lệ khả dụng (%),Lượt truy cập,Dung lượng (GB),Sự cố,Đạt SLA (%)\n");
 
         int stt = 1;
         for (DistrictStatDto d : report.districtBreakdown()) {

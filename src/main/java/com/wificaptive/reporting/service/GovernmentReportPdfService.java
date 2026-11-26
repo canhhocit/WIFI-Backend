@@ -200,8 +200,9 @@ public class GovernmentReportPdfService {
 
             document.add(kpiRow1);
 
-            // 4. Phần II: Bảng chi tiết 15 quận / huyện (Đủ 9 cột, header xám nhạt thanh lịch giống web)
-            document.add(buildSectionHeading("II. CHI TIẾT TỔNG HỢP THEO 15 QUẬN / HUYỆN THÀNH PHỐ HẢI PHÒNG", sectionTitleFont));
+            // 4. Phần II: Bảng chi tiết theo Phường / Xã / Đặc khu (Đủ 9 cột, header xám nhạt thanh lịch giống web)
+            int unitCount = report.districtBreakdown() != null ? report.districtBreakdown().size() : 114;
+            document.add(buildSectionHeading("II. CHI TIẾT TỔNG HỢP THEO " + unitCount + " PHƯỜNG / XÃ / ĐẶC KHU THÀNH PHỐ HẢI PHÒNG", sectionTitleFont));
 
             PdfPTable dataTable = new PdfPTable(9);
             dataTable.setWidthPercentage(100);
@@ -210,8 +211,8 @@ public class GovernmentReportPdfService {
             dataTable.setHeaderRows(1);
 
             addTableHeader(dataTable, "STT", thFont, Element.ALIGN_CENTER);
-            addTableHeader(dataTable, "Địa bàn Quận / Huyện", thFont, Element.ALIGN_LEFT);
-            addTableHeader(dataTable, "Chỉ tiêu NVH", thFont, Element.ALIGN_CENTER);
+            addTableHeader(dataTable, "Phường / Xã / Đặc khu", thFont, Element.ALIGN_LEFT);
+            addTableHeader(dataTable, "Số điểm phát", thFont, Element.ALIGN_CENTER);
             addTableHeader(dataTable, "Online", thFont, Element.ALIGN_CENTER);
             addTableHeader(dataTable, "Độ khả dụng", thFont, Element.ALIGN_CENTER);
             addTableHeader(dataTable, "Lượt truy cập", thFont, Element.ALIGN_RIGHT);
@@ -285,7 +286,7 @@ public class GovernmentReportPdfService {
                     "Cổng chào điện tử phục vụ truyền thông chuyển đổi số và điều hướng trực tiếp tới Cổng Dịch vụ công thành phố Hải Phòng tại các điểm đã lắp đặt thiết bị.",
                     noteBoldFont, noteTextFont));
             p3Cell.addElement(buildBullet("An toàn thông tin & Lưu vết pháp lý: ",
-                    "Hệ thống áp dụng phân quyền 3 cấp, kiểm soát tên miền DNS và lưu trữ nhật ký phiên truy cập 12 tháng phục vụ công tác kiểm tra, giám sát theo quy định.",
+                    "Hệ thống áp dụng phân quyền chặt chẽ (Quản trị – Sở KH&CN – UBND Phường/Xã/Đặc khu), kiểm soát tên miền DNS và lưu trữ nhật ký phiên truy cập 12 tháng phục vụ công tác kiểm tra, giám sát theo quy định.",
                     noteBoldFont, noteTextFont));
             String slaSummaryText = (report.networkAvailabilityRate() >= 99.0 && report.telecomSlaComplianceRate() >= 95.0)
                     ? String.format("Hệ thống vận hành ổn định, tỷ lệ sẵn sàng mạng đạt %s và tỷ lệ xử lý sự cố đúng hạn SLA đạt %s (MTTR: %.1f giờ).",

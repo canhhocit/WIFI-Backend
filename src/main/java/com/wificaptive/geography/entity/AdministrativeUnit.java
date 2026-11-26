@@ -24,7 +24,7 @@ public class AdministrativeUnit {
     private String name;
 
     @Column(nullable = false)
-    private Integer level; // 1: City, 2: District, 3: Ward/Commune
+    private Integer level; // 1: Thành phố, 2: Phường / Xã / Đặc khu (chính quyền 2 cấp)
 
     @Column(nullable = false, length = 255)
     private String path;

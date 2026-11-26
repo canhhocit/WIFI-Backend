@@ -75,23 +75,19 @@ public class GisMapController {
             dto.setLatitude(loc.getLatitude() != null ? loc.getLatitude() : 20.8449);
             dto.setLongitude(loc.getLongitude() != null ? loc.getLongitude() : 106.6881);
 
-            // Administrative unit and district resolution
+            // Administrative unit resolution (2-tier: City -> Phường / Xã / Đặc khu)
             if (loc.getAdminUnit() != null) {
                 AdministrativeUnit unit = loc.getAdminUnit();
                 dto.setAdminUnitId(unit.getId());
                 dto.setAdminUnitName(unit.getName());
 
-                String district = null;
-                if (unit.getLevel() != null && unit.getLevel() == 2) {
-                    district = unit.getName();
-                } else if (unit.getParent() != null) {
-                    district = unit.getParent().getName();
-                } else {
-                    district = inferDistrictFromText(loc.getAddress(), loc.getName());
+                String unitLabel = unit.getName();
+                if (unit.getLevel() != null && unit.getLevel() == 3 && unit.getParent() != null) {
+                    unitLabel = unit.getParent().getName();
                 }
-                dto.setDistrictName(district);
+                dto.setDistrictName(unitLabel);
             } else {
-                dto.setDistrictName(inferDistrictFromText(loc.getAddress(), loc.getName()));
+                dto.setDistrictName(null);
             }
 
             dto.setIspName(loc.getIspName() != null ? loc.getIspName() : "Viettel");
@@ -156,25 +152,5 @@ public class GisMapController {
         }
 
         return ApiResponse.ok(result);
-    }
-
-    private String inferDistrictFromText(String address, String name) {
-        String combined = ((address != null ? address : "") + " " + (name != null ? name : "")).toLowerCase();
-        if (combined.contains("thủy nguyên") || combined.contains("thuy nguyen") || combined.contains("núi đèo") || combined.contains("nui deo")) return "Huyện Thủy Nguyên";
-        if (combined.contains("hồng bàng") || combined.contains("hong bang") || combined.contains("hoàng văn thụ") || combined.contains("hoang van thu")) return "Quận Hồng Bàng";
-        if (combined.contains("ngô quyền") || combined.contains("ngo quyen") || combined.contains("máy tơ") || combined.contains("may to")) return "Quận Ngô Quyền";
-        if (combined.contains("lê chân") || combined.contains("le chan") || combined.contains("an biên") || combined.contains("an bien")) return "Quận Lê Chân";
-        if (combined.contains("hải an") || combined.contains("hai an")) return "Quận Hải An";
-        if (combined.contains("kiến an") || combined.contains("kien an")) return "Quận Kiến An";
-        if (combined.contains("đồ sơn") || combined.contains("do son")) return "Quận Đồ Sơn";
-        if (combined.contains("dương kinh") || combined.contains("duong kinh")) return "Quận Dương Kinh";
-        if (combined.contains("an dương") || combined.contains("an duong")) return "Huyện An Dương";
-        if (combined.contains("an lão") || combined.contains("an lao")) return "Huyện An Lão";
-        if (combined.contains("kiến thụy") || combined.contains("kien thuy")) return "Huyện Kiến Thụy";
-        if (combined.contains("tiên lãng") || combined.contains("tien lang")) return "Huyện Tiên Lãng";
-        if (combined.contains("vĩnh bảo") || combined.contains("vinh bao")) return "Huyện Vĩnh Bảo";
-        if (combined.contains("cát hải") || combined.contains("cat hai") || combined.contains("cát bà") || combined.contains("cat ba")) return "Huyện Cát Hải";
-        if (combined.contains("bạch long vĩ") || combined.contains("bach long vi")) return "Huyện Bạch Long Vĩ";
-        return null;
     }
 }

@@ -37,6 +37,7 @@ public class AdministrativeUnitService {
     @Transactional(readOnly = true)
     public List<AdminUnitDto> getByLevel(Integer level) {
         return unitRepository.findByLevelOrderByCodeAsc(level).stream()
+                .filter(u -> u.getStatus() == null || "ACTIVE".equalsIgnoreCase(u.getStatus()))
                 .map(this::mapToFlatDto)
                 .collect(Collectors.toList());
     }
@@ -44,6 +45,7 @@ public class AdministrativeUnitService {
     @Transactional(readOnly = true)
     public List<AdminUnitDto> getChildren(Long parentId) {
         return unitRepository.findByParentIdOrderByCodeAsc(parentId).stream()
+                .filter(u -> u.getStatus() == null || "ACTIVE".equalsIgnoreCase(u.getStatus()))
                 .map(this::mapToFlatDto)
                 .collect(Collectors.toList());
     }
